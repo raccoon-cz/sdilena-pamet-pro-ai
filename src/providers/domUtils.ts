@@ -213,16 +213,41 @@ function isProseMirrorEditor(el: HTMLElement): boolean {
   return el.classList.contains("ProseMirror");
 }
 
-function setContentEditableText(el: HTMLElement, text: string): boolean {
+function dispatchKey(el: HTMLElement, key: string): void {
+  const opts: KeyboardEventInit = { key, code: key, bubbles: true, cancelable: true };
+  el.dispatchEvent(new KeyboardEvent("keydown", opts));
+  el.dispatchEvent(new KeyboardEvent("keyup", opts));
+}
+
+function waitAFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+
+/** ProseMirror si po `focus()`/nastavení DOM Range nemusí stihnout
+ * synchronizovat svůj vlastní (na DOM nezávislý) model výběru dřív, než mu
+ * hned na to pošleme simulovanou "paste" událost — pak ji zpracuje jako
+ * vložení na starou pozici kurzoru, ne jako náhradu celého obsahu (starý
+ * text zůstane a nový se jen přilepí za něj). Explicitní smazání přes
+ * simulovaný Backspace a krátké počkání na zpracování před samotným
+ * vložením dá ProseMirroru čas se skutečně srovnat s výběrem "vše". */
+async function clearProseMirrorContent(el: HTMLElement): Promise<void> {
+  selectAllContents(el);
+  dispatchKey(el, "Backspace");
+  await waitAFrame();
+}
+
+async function setContentEditableText(el: HTMLElement, text: string): Promise<boolean> {
   selectAllContents(el);
 
-  const strategies = isProseMirrorEditor(el)
-    ? [() => tryClipboardPaste(el, text), () => tryExecCommandInsertText(text)]
-    : [() => tryExecCommandInsertText(text), () => tryClipboardPaste(el, text)];
-
-  for (const strategy of strategies) {
-    if (strategy()) return true;
+  if (isProseMirrorEditor(el)) {
+    await clearProseMirrorContent(el);
+    if (tryClipboardPaste(el, text)) return true;
     selectAllContents(el);
+    if (tryExecCommandInsertText(text)) return true;
+  } else {
+    if (tryExecCommandInsertText(text)) return true;
+    selectAllContents(el);
+    if (tryClipboardPaste(el, text)) return true;
   }
 
   el.textContent = text;
@@ -239,7 +264,7 @@ export async function writeEditableText(el: HTMLElement, text: string): Promise<
       setNativeTextareaValue(el as HTMLTextAreaElement, text);
       return true;
     }
-    return setContentEditableText(el, text);
+    return await setContentEditableText(el, text);
   } catch {
     return false;
   }
