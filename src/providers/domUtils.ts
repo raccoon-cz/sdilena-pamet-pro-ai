@@ -202,16 +202,27 @@ function tryExecCommandInsertText(text: string): boolean {
   }
 }
 
+/** Jen ProseMirror (Claude) je znám tím, že si `execCommand`/přímý zápis
+ * po dalším renderu přepíše zpátky — proto pro něj dává smysl zkoušet
+ * simulaci vložení ze schránky jako první. Jiné editory (ChatGPT apod.)
+ * mívají vlastní posluchač na `paste` (kvůli vkládání obrázků/formátování),
+ * který si vložený text zpracuje po svém a nemusí respektovat "vyber celý
+ * obsah" tak jako ověřený `execCommand` — u nich by to vedlo k tomu, že
+ * starý text zůstane a nový se jen přilepí za něj. */
+function isProseMirrorEditor(el: HTMLElement): boolean {
+  return el.classList.contains("ProseMirror");
+}
+
 function setContentEditableText(el: HTMLElement, text: string): boolean {
   selectAllContents(el);
 
-  if (tryClipboardPaste(el, text)) {
-    return true;
-  }
+  const strategies = isProseMirrorEditor(el)
+    ? [() => tryClipboardPaste(el, text), () => tryExecCommandInsertText(text)]
+    : [() => tryExecCommandInsertText(text), () => tryClipboardPaste(el, text)];
 
-  selectAllContents(el);
-  if (tryExecCommandInsertText(text)) {
-    return true;
+  for (const strategy of strategies) {
+    if (strategy()) return true;
+    selectAllContents(el);
   }
 
   el.textContent = text;
