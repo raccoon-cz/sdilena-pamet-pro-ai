@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soukromí — Sdílená paměť pro AI</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --accent: #0284c7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --surface: #16233b;
+      --border: #2a3b57;
+      --text: #f1f5f9;
+      --text-muted: #a9b8cc;
+      --accent: #38bdf8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .subtitle { color: var(--text-muted); margin-top: 0; margin-bottom: 32px; font-size: 14.5px; }
+  h2 { font-size: 18px; margin-top: 36px; }
+  p, li { font-size: 15px; color: var(--text); }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 8px; }
+  strong { color: var(--text); }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin-bottom: 12px;
+  }
+  a { color: var(--accent); }
+  footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Soukromí — Sdílená paměť pro AI</h1>
+  <p class="subtitle">Chrome rozšíření pro sdílení jedné paměti mezi ChatGPT a Claude</p>
+
+  <p>Toto rozšíření je navrženo tak, aby veškerá vaše data zůstala <strong>výhradně ve vašem počítači</strong>.</p>
+
+  <h2>Co rozšíření ukládá</h2>
+  <ul>
+    <li>Vzpomínky, které si sami vytvoříte (text, kategorie, klíčová slova, profil, příznaky „vždy používat“ / „citlivé“ / aktivní).</li>
+    <li>Profily, které si sami vytvoříte.</li>
+    <li>Vaše nastavení (limity kontextu, výchozí profil apod.).</li>
+    <li>Technický stav připojení k ChatGPT/Claude (zda bylo uděleno oprávnění).</li>
+  </ul>
+  <p>Všechna tato data se ukládají pouze přes <code>chrome.storage.local</code> — lokální úložiště prohlížeče vázané na váš profil v tomto počítači.</p>
+
+  <h2>Co rozšíření neukládá a nedělá</h2>
+  <ul>
+    <li><strong>Neexistuje žádný server tvůrce rozšíření.</strong> Data se nikam neodesílají, nikde se nezálohují mimo váš počítač a tvůrce k nim nemá žádný přístup.</li>
+    <li><strong>Žádná telemetrie ani analytika.</strong> Rozšíření nesleduje, jak ho používáte.</li>
+    <li><strong>Žádné čtení hesel nebo přihlašovacích cookies.</strong> Rozšíření nemá důvod ani oprávnění k nim přistupovat a nepokouší se o to.</li>
+    <li><strong>Žádné automatické odesílání zpráv.</strong> Rozšíření nikdy samo neklikne na tlačítko Odeslat v ChatGPT nebo Claude.</li>
+    <li><strong>Žádná registrace uživatele.</strong> Rozšíření nevyžaduje účet ani přihlášení.</li>
+  </ul>
+
+  <h2>Kdy se data dostanou k OpenAI nebo Anthropic</h2>
+  <p>Vybrané vzpomínky se stanou součástí požadavku na ChatGPT nebo Claude <strong>jen tehdy</strong>, když:</p>
+  <ul>
+    <li>sami vyberete, které vzpomínky chcete použít (nebo necháte doplněk navrhnout výběr, který si prohlédnete),</li>
+    <li>sami kliknete na „Vložit do dotazu“,</li>
+    <li>sami odešlete výsledný dotaz tlačítkem Odeslat v dané službě.</li>
+  </ul>
+  <p>Bez tohoto vašeho výslovného kroku se žádná vzpomínka nikam neodesílá.</p>
+
+  <h2>Co smazání dat neovlivní</h2>
+  <p>Smazání vzpomínek, profilů nebo kompletní smazání všech dat v tomto rozšíření <strong>neodstraní</strong> zprávy, které jste již dříve odeslali do historie ChatGPT nebo Claude — ty spravují dané služby samy, mimo toto rozšíření.</p>
+
+  <h2>Oprávnění</h2>
+  <p>Rozšíření nežádá o přístup k ChatGPT ani Claude, dokud sami nekliknete na „Připojit“ v sekci „Připojené AI“. Přístup k doméně můžete kdykoli odebrat tlačítkem „Odpojit“, aniž by se smazaly vaše uložené vzpomínky.</p>
+
+  <footer>
+    Sdílená paměť pro AI — zdrojový kód a další dokumentace v repozitáři tohoto projektu na GitHubu.
+  </footer>
+</main>
+</body>
+</html>

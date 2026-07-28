@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="cs">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sdílená paměť pro AI</title>
+    <link rel="stylesheet" href="sidePanel.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header class="app-header">
+        <div class="app-title">
+          <span class="app-title__icon" aria-hidden="true">◈</span>
+          <span>Sdílená paměť pro AI</span>
+        </div>
+        <button id="nav-settings-btn" class="icon-button" title="Nastavení" aria-label="Nastavení">
+          ⚙
+        </button>
+      </header>
+
+      <nav class="tabs" id="main-tabs">
+        <button class="tabs__item" data-view="overview">Přehled</button>
+        <button class="tabs__item" data-view="memories">Moje paměť</button>
+        <button class="tabs__item" data-view="profiles">Profily</button>
+        <button class="tabs__item" data-view="providers">Připojené AI</button>
+      </nav>
+
+      <main id="view-root" class="view-root"></main>
+    </div>
+    <script type="module" src="sidePanel.ts"></script>
+  </body>
+</html>
