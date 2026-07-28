@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy — Shared Memory for AI</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #f8fafc;
+    --surface: #ffffff;
+    --border: #e2e8f0;
+    --text: #0f172a;
+    --text-muted: #475569;
+    --accent: #0284c7;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f172a;
+      --surface: #16233b;
+      --border: #2a3b57;
+      --text: #f1f5f9;
+      --text-muted: #a9b8cc;
+      --accent: #38bdf8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.6;
+  }
+  main {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  h1 { font-size: 26px; margin-bottom: 4px; }
+  .subtitle { color: var(--text-muted); margin-top: 0; margin-bottom: 32px; font-size: 14.5px; }
+  h2 { font-size: 18px; margin-top: 36px; }
+  p, li { font-size: 15px; color: var(--text); }
+  ul { padding-left: 20px; }
+  li { margin-bottom: 8px; }
+  strong { color: var(--text); }
+  a { color: var(--accent); }
+  footer {
+    margin-top: 48px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy — Shared Memory for AI</h1>
+  <p class="subtitle">
+    A Chrome extension for sharing one memory between ChatGPT and Claude ·
+    <a href="privacy-policy.html">Přečíst česky</a>
+  </p>
+
+  <p>This extension is designed so that all your data stays <strong>exclusively on your computer</strong>.</p>
+
+  <h2>What the extension stores</h2>
+  <ul>
+    <li>Memories you create yourself (text, category, keywords, profile, "always use" / "sensitive" / active flags).</li>
+    <li>Profiles you create yourself.</li>
+    <li>Your settings (context limits, default profile, etc.).</li>
+    <li>The technical connection status to ChatGPT/Claude (whether permission was granted).</li>
+  </ul>
+  <p>All of this data is stored only via <code>chrome.storage.local</code> — the browser's local storage tied to your profile on this computer.</p>
+
+  <h2>What the extension does not store or do</h2>
+  <ul>
+    <li><strong>There is no server operated by the developer.</strong> Data is never sent anywhere, never backed up outside your computer, and the developer has no access to it.</li>
+    <li><strong>No telemetry or analytics.</strong> The extension does not track how you use it.</li>
+    <li><strong>No reading of passwords or login cookies.</strong> The extension has no reason or permission to access them and does not attempt to.</li>
+    <li><strong>No automatic sending of messages.</strong> The extension never clicks the Send button in ChatGPT or Claude on its own.</li>
+    <li><strong>No user registration.</strong> The extension does not require an account or sign-in.</li>
+  </ul>
+
+  <h2>When data reaches OpenAI or Anthropic</h2>
+  <p>Selected memories become part of a request to ChatGPT or Claude <strong>only when</strong>:</p>
+  <ul>
+    <li>you yourself choose which memories to use (or let the extension suggest a selection, which you review),</li>
+    <li>you yourself click "Insert into query",</li>
+    <li>you yourself send the resulting query using the Send button in that service.</li>
+  </ul>
+  <p>Without this explicit action on your part, no memory is ever sent anywhere.</p>
+
+  <h2>What deleting data does not affect</h2>
+  <p>Deleting memories, profiles, or wiping all data in this extension does <strong>not remove</strong> messages you have already sent to your ChatGPT or Claude history — those are managed by those services themselves, outside this extension.</p>
+
+  <h2>Permissions</h2>
+  <p>The extension does not request access to ChatGPT or Claude until you click "Connect" in the "Connected AI" section. You can revoke access to a domain at any time using the "Disconnect" button, without deleting your saved memories.</p>
+
+  <footer>
+    Shared Memory for AI — source code and further documentation in this project's repository on GitHub.
+  </footer>
+</main>
+</body>
+</html>
