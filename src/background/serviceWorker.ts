@@ -157,7 +157,9 @@ async function disconnectProvider(provider: ProviderId): Promise<DisconnectProvi
 
 /** Po startu/instalaci znovu zaregistruje content scripty pro domény, na
  * které už uživatel dříve udělil oprávnění (perzistence napříč restarty
- * prohlížeče). */
+ * prohlížeče), a rovnou je nastřelí i do už otevřených karet — jinak by
+ * karta otevřená před reloadem/aktualizací rozšíření zůstala s neplatným
+ * (odpojeným) content scriptem až do ručního obnovení stránky. */
 async function reconcilePermissions(): Promise<void> {
   for (const provider of Object.keys(PROVIDER_HOST_PATTERNS) as ProviderId[]) {
     const hasPermission = await chrome.permissions.contains({
@@ -167,6 +169,7 @@ async function reconcilePermissions(): Promise<void> {
     const existing = connections.find((c) => c.provider === provider);
     if (hasPermission) {
       await registerProviderScript(provider);
+      await injectIntoOpenTabs(provider);
       if (!existing?.permissionGranted) {
         await repository.saveConnection({
           provider,
