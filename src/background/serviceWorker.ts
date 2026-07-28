@@ -17,29 +17,50 @@ function scriptIdFor(provider: ProviderId): string {
   return `memory-content-${provider}`;
 }
 
+/** `registerProviderScript`/`unregisterProviderScript` dělají "zkontroluj,
+ * pak zapiš" ve víc `await` krocích — pokud by se pro stejného providera
+ * spustily souběžně (např. `reconcilePermissions()` při startu prohlížeče
+ * zrovna když uživatel klikne na „Připojit"), obě větve by uviděly stejný
+ * stav a Chrome by nahlásil „Duplicate script ID". Zámek podle providera
+ * zajistí, že se tyhle operace pro jednu službu nikdy nepřekryjí. */
+const providerLocks = new Map<ProviderId, Promise<unknown>>();
+
+function runExclusive<T>(provider: ProviderId, task: () => Promise<T>): Promise<T> {
+  const previous = providerLocks.get(provider) ?? Promise.resolve();
+  const run = previous.then(task, task);
+  // Uložená verze zámku nikdy sama neselže, aby chyba jednoho volání
+  // nezablokovala frontu pro další.
+  providerLocks.set(provider, run.catch(() => {}));
+  return run;
+}
+
 async function registerProviderScript(provider: ProviderId): Promise<void> {
-  const id = scriptIdFor(provider);
-  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
-  if (existing.length > 0) {
-    await chrome.scripting.unregisterContentScripts({ ids: [id] });
-  }
-  await chrome.scripting.registerContentScripts([
-    {
-      id,
-      matches: PROVIDER_HOST_PATTERNS[provider],
-      js: [CONTENT_SCRIPT_FILE],
-      runAt: "document_idle",
-      persistAcrossSessions: true,
-    },
-  ]);
+  return runExclusive(provider, async () => {
+    const id = scriptIdFor(provider);
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
+    if (existing.length > 0) {
+      await chrome.scripting.unregisterContentScripts({ ids: [id] });
+    }
+    await chrome.scripting.registerContentScripts([
+      {
+        id,
+        matches: PROVIDER_HOST_PATTERNS[provider],
+        js: [CONTENT_SCRIPT_FILE],
+        runAt: "document_idle",
+        persistAcrossSessions: true,
+      },
+    ]);
+  });
 }
 
 async function unregisterProviderScript(provider: ProviderId): Promise<void> {
-  const id = scriptIdFor(provider);
-  const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
-  if (existing.length > 0) {
-    await chrome.scripting.unregisterContentScripts({ ids: [id] });
-  }
+  return runExclusive(provider, async () => {
+    const id = scriptIdFor(provider);
+    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
+    if (existing.length > 0) {
+      await chrome.scripting.unregisterContentScripts({ ids: [id] });
+    }
+  });
 }
 
 /** Okamžitě nastřelí content script i do už otevřených karet dané domény —
@@ -146,11 +167,19 @@ chrome.runtime.onInstalled.addListener(() => {
   chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(() => {
     // Starší Chrome bez podpory setPanelBehavior — akce prostě nic neudělá.
   });
-  void reconcilePermissions();
+  reconcilePermissions().catch(() => {
+    // Volané bez čekání při startu/instalaci — případná chyba (např. race
+    // se souběžným "Připojit") se tiše zahodí, aby neskončila jako
+    // nezachycené odmítnutí v chrome://extensions.
+  });
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  void reconcilePermissions();
+  reconcilePermissions().catch(() => {
+    // Volané bez čekání při startu/instalaci — případná chyba (např. race
+    // se souběžným "Připojit") se tiše zahodí, aby neskončila jako
+    // nezachycené odmítnutí v chrome://extensions.
+  });
 });
 
 /** Klávesová zkratka (výchozí Alt+Shift+M, uživatel si ji může přenastavit
