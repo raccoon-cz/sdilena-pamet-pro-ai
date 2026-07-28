@@ -17,12 +17,9 @@ function scriptIdFor(provider: ProviderId): string {
   return `memory-content-${provider}`;
 }
 
-/** `registerProviderScript`/`unregisterProviderScript` dělají "zkontroluj,
- * pak zapiš" ve víc `await` krocích — pokud by se pro stejného providera
- * spustily souběžně (např. `reconcilePermissions()` při startu prohlížeče
- * zrovna když uživatel klikne na „Připojit"), obě větve by uviděly stejný
- * stav a Chrome by nahlásil „Duplicate script ID". Zámek podle providera
- * zajistí, že se tyhle operace pro jednu službu nikdy nepřekryjí. */
+/** `registerProviderScript`/`unregisterProviderScript` mění stav, na který
+ * se čeká z víc míst (start prohlížeče, ruční „Připojit"/"Odpojit") — zámek
+ * podle providera zajistí, že se pro jednu službu nikdy nepřekryjí. */
 const providerLocks = new Map<ProviderId, Promise<unknown>>();
 
 function runExclusive<T>(provider: ProviderId, task: () => Promise<T>): Promise<T> {
@@ -34,33 +31,54 @@ function runExclusive<T>(provider: ProviderId, task: () => Promise<T>): Promise<
   return run;
 }
 
+function isScriptErrorMatching(err: unknown, needle: string): boolean {
+  return err instanceof Error && err.message.includes(needle);
+}
+
+/** Odregistruje skript pro dané ID, pokud existuje — bez ohledu na to, co
+ * říká `getRegisteredContentScripts` předem. Registrace s
+ * `persistAcrossSessions: true` přežívají restart service workeru a jejich
+ * propsání do `getRegisteredContentScripts` může chvíli trvat, takže dotaz
+ * "existuje už?" nelze brát jako spolehlivý zdroj pravdy — jde se rovnou
+ * o mutaci samotnou a případná chyba "neexistuje" se tiše zahodí. */
+async function unregisterIfPresent(id: string): Promise<void> {
+  try {
+    await chrome.scripting.unregisterContentScripts({ ids: [id] });
+  } catch (err) {
+    if (!isScriptErrorMatching(err, "does not exist") && !isScriptErrorMatching(err, "No matching")) {
+      throw err;
+    }
+  }
+}
+
 async function registerProviderScript(provider: ProviderId): Promise<void> {
   return runExclusive(provider, async () => {
     const id = scriptIdFor(provider);
-    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
-    if (existing.length > 0) {
-      await chrome.scripting.unregisterContentScripts({ ids: [id] });
+    await unregisterIfPresent(id);
+    try {
+      await chrome.scripting.registerContentScripts([
+        {
+          id,
+          matches: PROVIDER_HOST_PATTERNS[provider],
+          js: [CONTENT_SCRIPT_FILE],
+          runAt: "document_idle",
+          persistAcrossSessions: true,
+        },
+      ]);
+    } catch (err) {
+      // I po odregistrování výše může Chrome nahlásit duplicitu (persistovaná
+      // registrace z předchozí relace se propíše se zpožděním) — pokud skript
+      // se stejným ID už fakticky existuje, je to přesně stav, který
+      // chceme, ne chyba.
+      if (!isScriptErrorMatching(err, "Duplicate script ID")) {
+        throw err;
+      }
     }
-    await chrome.scripting.registerContentScripts([
-      {
-        id,
-        matches: PROVIDER_HOST_PATTERNS[provider],
-        js: [CONTENT_SCRIPT_FILE],
-        runAt: "document_idle",
-        persistAcrossSessions: true,
-      },
-    ]);
   });
 }
 
 async function unregisterProviderScript(provider: ProviderId): Promise<void> {
-  return runExclusive(provider, async () => {
-    const id = scriptIdFor(provider);
-    const existing = await chrome.scripting.getRegisteredContentScripts({ ids: [id] });
-    if (existing.length > 0) {
-      await chrome.scripting.unregisterContentScripts({ ids: [id] });
-    }
-  });
+  return runExclusive(provider, () => unregisterIfPresent(scriptIdFor(provider)));
 }
 
 /** Okamžitě nastřelí content script i do už otevřených karet dané domény —
