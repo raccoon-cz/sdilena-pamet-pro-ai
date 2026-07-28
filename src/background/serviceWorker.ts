@@ -45,7 +45,7 @@ async function unregisterIfPresent(id: string): Promise<void> {
   try {
     await chrome.scripting.unregisterContentScripts({ ids: [id] });
   } catch (err) {
-    if (!isScriptErrorMatching(err, "does not exist") && !isScriptErrorMatching(err, "No matching")) {
+    if (!isScriptErrorMatching(err, "Nonexistent script ID")) {
       throw err;
     }
   }
@@ -223,20 +223,39 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
+/** Odpověď pro neočekávanou chybu — bez tohohle by `sendResponse` nikdy
+ * neproběhl a strana, co čeká na odpověď (např. tlačítko "Odpojit" v
+ * bočním panelu), by zůstala viset navždy bez jakékoli zpětné vazby. */
+function errorResponse(
+  message: BackgroundRequest,
+  err: unknown,
+): ConnectProviderResponse | DisconnectProviderResponse {
+  const errorText = err instanceof Error ? err.message : String(err);
+  if (message.type === "sp:connect-provider") {
+    return { ok: false, permissionGranted: false, error: errorText };
+  }
+  return { ok: false };
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (isBackgroundRequest(message)) {
-    void handleBackgroundRequest(message).then(sendResponse);
+    handleBackgroundRequest(message)
+      .catch((err) => errorResponse(message, err))
+      .then(sendResponse);
     return true;
   }
   if (isContentToBackgroundMessage(message)) {
-    void repository
+    repository
       .saveConnection({
         provider: message.diagnostics.provider,
         enabled: true,
         permissionGranted: true,
         lastDetectedAt: message.diagnostics.checkedAt,
       })
-      .then(() => sendResponse({ ok: true }));
+      .then(
+        () => sendResponse({ ok: true }),
+        () => sendResponse({ ok: false }),
+      );
     return true;
   }
   return false;
