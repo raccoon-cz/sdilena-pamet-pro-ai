@@ -40,6 +40,7 @@ def popup_html(r: pd.Series) -> str:
         ("Plocha ÚP", r.get("up_plocha")),
         ("Podíl v ploše", f"{r.get('podil_pct')} %"),
         ("Přístup", r.get("pristup_txt")),
+        ("Sousedí se zastavěnou parcelou", r.get("u_domu_txt")),
     ]
     if r.get("duvod"):
         rows.insert(0, ("Vyřazeno", r.get("duvod")))

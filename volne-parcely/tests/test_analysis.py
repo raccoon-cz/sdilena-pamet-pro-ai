@@ -271,3 +271,18 @@ def test_detekce_kodu_ignoruje_oznaceni_a_stav():
     kod, share = detect_code_field(df)
     assert kod == "FUKCE_2" and share == 1.0
     assert detect_name_field(df, kod) == "FUNKCE"
+
+
+def test_spolecna_hranice_se_zastavenou_parcelou():
+    from parcely.analysis import shared_boundary
+
+    dum = gdf([box(0, 0, 20, 20)])
+    parcels = gdf([box(0, 20, 20, 60),      # zahrada za domem: 20 m společné hranice
+                   box(20, 0, 30, 20),      # sousedí bokem: 20 m
+                   box(20.3, 30, 40, 50),   # jen roh v toleranci: ~0 m
+                   box(100, 100, 120, 120)])  # daleko
+    res = shared_boundary(parcels, dum)
+    assert res.iloc[0] == pytest.approx(20, abs=1.5)
+    assert res.iloc[1] == pytest.approx(20, abs=1.5)
+    assert res.iloc[2] < 1.5
+    assert res.iloc[3] == 0

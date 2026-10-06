@@ -28,6 +28,8 @@ KANDIDATI_COLUMNS: list[tuple[str, str, int, str | None]] = [
     ("url_nahlizeni", "Nahlížení do KN", 14, None),
     ("url_mapy", "Mapy.cz", 10, None),
     # doplňující sloupce
+    ("u_domu_txt", "Sousedí se zastavěnou parcelou (zahrada u domu?)", 14, None),
+    ("hranice_zastavena_m", "Společná hranice se zastavěnou parcelou (m)", 13, "0.0"),
     ("vzdalenost_komunikace_m", "Vzdálenost ke komunikaci (m)", 13, "0.0"),
     ("rozpad_skore", "Rozpad skóre", 44, None),
     ("zpusob_nazev", "Způsob využití", 20, None),

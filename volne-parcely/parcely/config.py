@@ -38,6 +38,9 @@ DEFAULTS: dict[str, Any] = {
     "min_podil_v_plose": 0.6,
     "max_vzdalenost_od_komunikace_m": 5,
     "max_prekryv_budovy_m2": 10,
+    # Parcela, která sdílí aspoň tolik metrů hranice se zastavěnou parcelou, se označí
+    # „sousedí s domem“ (častý případ: zahrada za domem téhož majitele). Jen informace.
+    "soused_dum_min_hranice_m": 5,
     # Do listu „Lesní a vyřazené“ jdou vyřazené parcely aspoň s tímto podílem v cílové ploše
     # a aspoň s touto výměrou (drobné zbytkové parcely jsou jen šum). Stávající domy
     # (zastavěná plocha) a nevhodné parcely (komunikace, voda) se do listu nedávají.

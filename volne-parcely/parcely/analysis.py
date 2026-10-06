@@ -87,6 +87,28 @@ def building_overlap(parcels: gpd.GeoDataFrame, buildings: gpd.GeoDataFrame | No
     return out
 
 
+def shared_boundary(parcels: gpd.GeoDataFrame, others: gpd.GeoDataFrame | None, tol: float = 0.5) -> pd.Series:
+    """Délka hranice (m), kterou parcela sdílí s parcelami `others` (např. zastavěnými = domy).
+
+    Typický falešný kandidát je zahrada za domem: samostatná parcela přiléhající k zastavěné
+    parcele téhož majitele. Tolerance `tol` pokryje drobné nepřesnosti hranic.
+    """
+    out = pd.Series(0.0, index=parcels.index, name="hranice_zastavena_m")
+    if others is None or others.empty or parcels.empty:
+        return out
+    left = parcels[["geometry"]]
+    right = others[["geometry"]].reset_index(drop=True)
+    pairs = gpd.sjoin(left, right.assign(geometry=right.buffer(tol)), predicate="intersects", how="inner")
+    if pairs.empty:
+        return out
+    a = shapely.boundary(np.asarray(left.geometry.loc[pairs.index].values))
+    b = shapely.buffer(np.asarray(right.geometry.loc[pairs["index_right"]].values), tol)
+    lengths = pd.Series(shapely.length(shapely.intersection(a, b)), index=pairs.index)
+    s = lengths.groupby(level=0).sum()
+    out.loc[s.index] = s.values
+    return out
+
+
 def access(
     parcels: gpd.GeoDataFrame,
     roads: gpd.GeoDataFrame | None,

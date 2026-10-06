@@ -12,7 +12,7 @@ import pandas as pd
 from shapely.geometry import box
 
 from . import CRS_KN
-from .analysis import FilterResult, access, apply_filters, building_overlap, score, up_overlap
+from .analysis import FilterResult, access, apply_filters, building_overlap, score, shared_boundary, up_overlap
 from .budovy import load_buildings
 from .ciselniky import FALLBACK_DRUH_POZEMKU, Ciselnik, load_ciselnik, resolve_codes
 from .config import Config, KatastralniUzemi
@@ -142,6 +142,11 @@ def process_ku(cfg: Config, ku: KatastralniUzemi, up: gpd.GeoDataFrame, kody: Ko
         vyrazene_min_vymera=float(cfg["vyrazene_min_vymera_m2"]),
         budovy_dostupne=buildings is not None,
     )
+    zastavene = parcels.loc[parcels["druh_kod"].isin(list(kody.zastavena)).fillna(False).astype(bool)]
+    for name in ("kandidati", "lesni", "vyrazene"):
+        frame = getattr(res.filtr, name)
+        if not frame.empty:
+            setattr(res.filtr, name, frame.assign(hranice_zastavena_m=shared_boundary(frame, zastavene).round(1)))
     res.stav = "OK"
     res.zprava = "; ".join(res.poznamky)
     log.info("%s: %d kandidátů, %d lesních, %d vyřazených k posouzení",
@@ -173,6 +178,9 @@ def enrich(df: gpd.GeoDataFrame, cfg: Config, kody: Kody) -> gpd.GeoDataFrame:
         f"podíl {a:g} + přístup {b:g} + výměra {c:g} + druh {d:g}"
         for a, b, c, d in zip(df["skore_podil"], df["skore_pristup"], df["skore_vymera"], df["skore_druh"])
     ]
+    if "hranice_zastavena_m" in df.columns:
+        limit = float(cfg["soused_dum_min_hranice_m"])
+        df["u_domu_txt"] = df["hranice_zastavena_m"].map(lambda v: "ano" if pd.notna(v) and v >= limit else "ne")
     if "bud_id" in df.columns:
         df["bud_id_txt"] = df["bud_id"].map(lambda v: "ano" if pd.notna(v) else "ne")
     return df
