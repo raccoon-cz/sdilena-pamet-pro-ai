@@ -1,0 +1,120 @@
+name: volne-parcely
+
+on:
+  pull_request:
+    paths:
+      - "volne-parcely/**"
+      - ".github/workflows/volne-parcely.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  testy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: volne-parcely
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q
+
+  realna-data:
+    # Ověření na reálných otevřených datech ČÚZK. Do Nahlížení do KN se nic neposílá.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: volne-parcely
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -r requirements.txt
+
+      - name: Vyhledání KÚ v číselníku
+        run: python main.py ku "Moravany" -c ci/config.real.yaml
+
+      - name: Stažení KÚ a číselníků
+        run: python main.py download -c ci/config.real.yaml
+
+      - name: Inspect 698504 (všechny vrstvy)
+        run: python main.py inspect 698504 -c ci/config.real.yaml --vzorku 5
+
+      - name: Inspect – četnosti druhů a způsobů využití
+        run: |
+          python main.py inspect 698504 -c ci/config.real.yaml --vrstva PARCELY_KN_DEF --hodnoty DRUPOZ_KOD --vzorku 1
+          python main.py inspect 698504 -c ci/config.real.yaml --vrstva PARCELY_KN_DEF --hodnoty ZPVYPA_KOD --vzorku 1
+
+      - name: Obsah ZIPu a číselníků
+        run: |
+          unzip -l data/cache/ku/698504.zip
+          for f in data/cache/cis/*.zip; do echo "== $f"; unzip -p "$f" | iconv -f cp1250 -t utf-8 | head -40 || true; done
+
+      - name: Záloha budov z RÚIAN VFR
+        continue-on-error: true
+        run: python ci/overeni.py vfr 698504
+
+      - name: WMS – capabilities a testovací GetMap v EPSG:3857
+        continue-on-error: true
+        run: |
+          set +e -x
+          curl -sS -m 90 "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?service=WMS&request=GetCapabilities" -o orto.xml
+          grep -oE '<Name>[^<]*</Name>' orto.xml | head -10
+          grep -oE '<(CRS|SRS)>[^<]*' orto.xml | sort -u | head -40
+          curl -sS -m 90 -o orto.jpg -w "ortofoto GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
+            "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?service=WMS&version=1.1.1&request=GetMap&layers=0&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/jpeg"
+          curl -sS -m 90 "https://services.cuzk.gov.cz/wms/local-km-wms.asp?service=WMS&request=GetCapabilities" -o km.xml
+          grep -oE '<Name>[^<]*</Name>' km.xml | head -40
+          grep -oE '<(CRS|SRS)>[^<]*' km.xml | sort -u | head -40
+          curl -sS -m 90 -o km.png -w "KM GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
+            "https://services.cuzk.gov.cz/wms/local-km-wms.asp?service=WMS&version=1.1.1&request=GetMap&layers=hranice_parcel,parcelni_cisla&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/png&transparent=true"
+
+      - name: Průzkum NGÚP (jak stáhnout data ÚP)
+        continue-on-error: true
+        run: |
+          set +e
+          mkdir -p ../ngup && cd ../ngup
+          curl -sSL -m 60 -A "Mozilla/5.0" -o dokumenty.html -w "dokumenty-obci: HTTP %{http_code} %{size_download} B\n" https://uzemniplanovani.gov.cz/dokumenty-obci
+          grep -oE '(src|href)="[^"]+"' dokumenty.html | grep -iE '\.js|/o/' | sort -u | head -60
+          grep -oE '/o/[A-Za-z0-9_./-]+' dokumenty.html | sort -u | head -60
+          for js in $(grep -oE 'src="[^"]+\.js[^"]*"' dokumenty.html | sed -E 's/^src="//; s/"$//' | sort -u | head -40); do
+            case "$js" in http*) u="$js";; /*) u="https://uzemniplanovani.gov.cz$js";; *) continue;; esac
+            curl -sSL -m 30 -A "Mozilla/5.0" "$u" -o b.js || continue
+            hits=$(grep -oE '"/o/rest[^"]{0,120}"|/o/rest/[A-Za-z0-9_./{}$-]{0,120}|rest/ais/[A-Za-z0-9_./{}$-]{0,120}' b.js | sort -u | head -40)
+            [ -n "$hits" ] && { echo "== $u"; echo "$hits"; }
+          done
+          for path in /o/rest/ais /o/rest/ais/documents /o/rest/ais/municipalities /o/rest/ais/contents /o/api/jsonws; do
+            curl -sS -m 30 -A "Mozilla/5.0" -o r.txt -w "$path: HTTP %{http_code} %{content_type} %{size_download} B\n" "https://uzemniplanovani.gov.cz$path"
+            head -c 600 r.txt; echo
+          done
+
+      - name: Náhradní ÚP (celé KÚ = BI) a celý běh
+        run: |
+          python ci/overeni.py up-cele-ku 698504 713392
+          python main.py run -c ci/config.real.yaml
+
+      - name: Výpis výsledků
+        run: python ci/overeni.py vysledky output/ci | tee vysledky.txt
+
+      - name: Kontrola odkazu na VDP (1 požadavek)
+        continue-on-error: true
+        run: |
+          set +e
+          id=$(grep '^UKAZKA_ID' vysledky.txt | awk '{print $2}')
+          curl -sS -m 60 -o vdp.html -w "VDP parcela $id: HTTP %{http_code}, %{size_download} B\n" "https://vdp.cuzk.gov.cz/vdp/ruian/parcely/$id"
+          grep -oE '<title>[^<]*</title>' vdp.html | head -2
+          grep -oE 'Parcela[^<]{0,80}' vdp.html | head -5
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: volne-parcely-vystupy
+          path: volne-parcely/output/ci
+          retention-days: 14
