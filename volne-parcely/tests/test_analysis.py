@@ -228,3 +228,46 @@ def test_make_valid_motylek():
     assert fixed.geometry.is_valid.all()
     assert fixed.geometry.iloc[0].area == pytest.approx(50)
     assert fixed.geometry.iloc[0].geom_type in ("Polygon", "MultiPolygon")
+
+
+# --- výběr cílových ploch podle názvu ---------------------------------------------
+
+def test_shoda_nazvu():
+    from parcely.uzemni_plan import name_matches
+
+    assert name_matches("Plochy smíšené obytné", ["smíšené obytné"])
+    assert name_matches("Plocha smíšená obytná", ["smíšené obytné"])
+    assert name_matches("Plochy bydlení (B)", ["bydlení"])
+    assert name_matches("BYDLENÍ V RODINNÝCH DOMECH", ["bydlení"])
+    assert not name_matches("Plochy smíšené výrobní", ["smíšené obytné"])
+    assert not name_matches("Plochy smíšené nezastavěného území", ["smíšené obytné"])
+    assert name_matches("Plocha bydlení hromadného", ["hromadné"])
+
+
+def test_vyber_cilovych_ploch():
+    from parcely.uzemni_plan import select_targets
+
+    up = gdf([box(0, 0, 1, 1)] * 4, up_kod=["B", "B", "D", "Z"],
+             up_nazev=["Plochy bydlení individuálního", "Plochy bydlení hromadného", "Plochy dopravní", "Plochy zemědělské"])
+    # standardní kódy v ÚP nejsou → podle názvu, bez hromadného bydlení
+    assert select_targets(up, ["BI", "SV"], ["bydlení", "smíšené obytné"], ["hromadné"]).tolist() == [True, False, False, False]
+    # kódy nalezeny → názvy se nepoužijí
+    assert select_targets(up, ["B"], ["bydlení"], []).tolist() == [True, True, False, False]
+    # záloha vypnutá
+    assert not select_targets(up, ["BI"], [], []).any()
+
+
+def test_detekce_kodu_ignoruje_oznaceni_a_stav():
+    from parcely.uzemni_plan import detect_code_field, detect_name_field
+
+    n = 70
+    df = gdf([box(i, 0, i + 1, 1) for i in range(n)],
+             OZNACENI=[f"A{i:03d}" for i in range(n)],
+             FUKCE_2=[["B", "D", "Z", "P", "O"][i % 5] for i in range(n)],
+             FAZE=[["S", "N"][i % 2] for i in range(n)],
+             FUNKCE=[["Plochy smíšené obytné", "Plochy dopravní", "Plochy zemědělské", "Plochy veřejných prostranství",
+                      "Plochy občanského vybavení"][i % 5] for i in range(n)],
+             FAZE_2=[["Plocha stabilizovaná", "Plocha zastavitelná"][i % 2] for i in range(n)])
+    kod, share = detect_code_field(df)
+    assert kod == "FUKCE_2" and share == 1.0
+    assert detect_name_field(df, kod) == "FUNKCE"

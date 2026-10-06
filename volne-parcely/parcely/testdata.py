@@ -168,6 +168,33 @@ def build_up(dest: Path, crs: int = 5514) -> Path:
     return dest
 
 
+# Převod na ÚP „starého typu“ (jako ÚP Kuřim/Čebín): jednopísmenné místní kódy a názvy ploch.
+STARY_TYP = {
+    "BI": ("B", "Plochy smíšené obytné", "Plocha smíšená obytná"),
+    "BV": ("B", "Plochy smíšené obytné", "Plocha smíšená obytná"),
+    "SV": ("B", "Plochy smíšené obytné", "Plocha smíšená obytná"),
+    "SM": ("B", "Plochy smíšené obytné", "Plocha smíšená obytná"),
+    "NZ": ("Z", "Plochy zemědělské", "Plocha zemědělská"),
+    "DS": ("D", "Plochy dopravní infrastruktury", "Plocha dopravní infrastruktury"),
+    "ZV": ("P", "Plochy veřejných prostranství", "Plocha veřejné zeleně"),
+}
+
+
+def build_up_stary(dest: Path) -> Path:
+    """ÚP se strukturou jako veřejná služba MÚ Kuřim (OZNACENI, FUNKCE, FUKCE_2, POPIS, FAZE, FAZE_2)."""
+    rows = []
+    for i, (typ, cash, _idx, geom) in enumerate(UP_AREAS, start=1):
+        kod, funkce, popis = STARY_TYP[typ]
+        rows.append({"OZNACENI": f"A{i:03d}", "FUNKCE": funkce, "FUKCE_2": kod, "POPIS": popis,
+                     "FAZE": "S" if cash == 1 else "N",
+                     "FAZE_2": "Plocha stabilizovaná v zastavěném území" if cash == 1 else "Plocha zastavitelná",
+                     "geometry": geom})
+    gdf = gpd.GeoDataFrame(rows, geometry="geometry", crs=5514)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    gdf.to_file(dest, layer="up", driver="GPKG", engine="pyogrio")
+    return dest
+
+
 def _csv_zip(dest: Path, name: str, df: pd.DataFrame) -> Path:
     dest.parent.mkdir(parents=True, exist_ok=True)
     buf = io.StringIO()

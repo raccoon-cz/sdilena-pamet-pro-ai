@@ -18,6 +18,10 @@ class ConfigError(Exception):
 
 DEFAULTS: dict[str, Any] = {
     "cilove_kody": ["BI", "BV", "BX", "SV", "SM"],
+    # Záloha pro ÚP, které kódy jednotného standardu nepoužívají (starší ÚP mají např. „B“ =
+    # „Plochy smíšené obytné“): cílové plochy se pak vyberou podle názvu. [] = vypnuto.
+    "cilove_nazvy": ["bydlení", "smíšené obytné"],
+    "cilove_nazvy_vyjma": ["hromadné"],
     # presne = kód plochy se musí shodovat přesně, prefix = stačí začátek (např. "BI" ~ "BI.1")
     "porovnani_kodu": "presne",
     # Názvy použité, když ÚP nemá atribut s názvem plochy. Lze přepsat v configu.
@@ -106,6 +110,10 @@ DEFAULTS: dict[str, Any] = {
 
 REQUIRED_KN_ATTRS = ("id_parcely", "cislo", "vymera", "druh_kod", "zpusob_kod")
 
+# Atributy ÚP vypisované jako detail plochy (použijí se jen ty, které v datech jsou):
+# jednotný standard (CasH, Index) i běžné varianty starších ÚP (stav/fáze plochy).
+ATRIBUTY_INFO = ("CasH", "Index", "FAZE_2", "VYZNAM", "STAV")
+
 
 def _deep_merge(base: dict, override: dict) -> dict:
     out = copy.deepcopy(base)
@@ -123,14 +131,17 @@ class UzemniPlan:
     cesta: Path | str  # soubor, nebo URL veřejné ArcGIS služby (…/FeatureServer[/id])
     vrstva: str | None = None
     atribut_kod: str = "Typ"
-    atribut_nazev: str | None = None
+    atribut_nazev: str | None = "auto"
     crs: str | None = None
     kodovani: str | None = None
     filtr: dict[str, list[str]] = field(default_factory=dict)
     # Atributy ÚP, které se vypíšou do výstupu jako doplňující informace (pokud v datech jsou).
-    atributy_info: list[str] = field(default_factory=lambda: ["CasH", "Index"])
+    atributy_info: list[str] = field(default_factory=lambda: list(ATRIBUTY_INFO))
     # jen pro ArcGIS službu: podmínka dotazu na straně serveru
     where: str = "1=1"
+    # přepíší globální cilove_kody / cilove_nazvy jen pro tuto obec
+    cilove_kody: list[str] | None = None
+    cilove_nazvy: list[str] | None = None
 
     @property
     def je_sluzba(self) -> bool:
@@ -177,6 +188,8 @@ class Config:
         return [
             ("Config", str(self.path) if self.path else "(v paměti)"),
             ("Cílové kódy ploch ÚP", ", ".join(self.cilove_kody)),
+            ("Cílové názvy ploch (záloha bez kódů)", ", ".join(r["cilove_nazvy"]) or "–"),
+            ("Názvy vyjma", ", ".join(r["cilove_nazvy_vyjma"]) or "–"),
             ("Porovnání kódů", r["porovnani_kodu"]),
             ("Min. výměra (m²)", r["min_vymera_m2"]),
             ("Max. výměra (m²)", r["max_vymera_m2"]),
@@ -217,12 +230,14 @@ def _parse_up(obec: str, data: dict | None, cfg_dir: Path) -> UzemniPlan | None:
         cesta=cesta,
         vrstva=str(data["vrstva"]) if data.get("vrstva") is not None else None,
         atribut_kod=str(data.get("atribut_kod") or "Typ"),
-        atribut_nazev=data.get("atribut_nazev"),
+        atribut_nazev=data.get("atribut_nazev", "auto"),
         crs=str(data["crs"]) if data.get("crs") else None,
         kodovani=data.get("kodovani"),
         filtr=filtr,
-        atributy_info=[str(a) for a in (data.get("atributy_info") or ["CasH", "Index"])],
+        atributy_info=[str(a) for a in (data.get("atributy_info") or ATRIBUTY_INFO)],
         where=str(data.get("where") or "1=1"),
+        cilove_kody=[str(k).strip().upper() for k in data["cilove_kody"]] if data.get("cilove_kody") else None,
+        cilove_nazvy=[str(k) for k in data["cilove_nazvy"]] if data.get("cilove_nazvy") is not None else None,
     )
 
 

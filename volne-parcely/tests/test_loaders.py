@@ -123,3 +123,12 @@ def test_up_auto_atribut_bez_kodu(tmp_path):
     gpd.GeoDataFrame({"popis": ["les", "louka"]}, geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)], crs=5514).to_file(path)
     with pytest.raises(UPError, match="nepodařilo určit automaticky"):
         load_up(UzemniPlan(obec="T", cesta=path, atribut_kod="auto"))
+
+
+def test_up_stary_typ_auto_detekce(tmp_path):
+    """ÚP jako Kuřim: kód ve FUKCE_2 (B, D, Z, P), označení A001…, stav S/N."""
+    path = td.build_up_stary(tmp_path / "stary.gpkg")
+    gdf = load_up(UzemniPlan(obec="T", cesta=path, atribut_kod="auto"))
+    assert set(gdf["up_kod"]) == {"B", "Z", "D", "P"}
+    assert gdf.loc[gdf["up_kod"] == "B", "up_nazev"].iloc[0] in ("Plochy smíšené obytné", "Plocha smíšená obytná")
+    assert "FAZE_2=" in gdf["up_detail"].iloc[0]

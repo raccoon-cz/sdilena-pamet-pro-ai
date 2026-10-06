@@ -22,7 +22,7 @@ from .kn import KNPackage, load_parcels
 from .links import mapy_url, nahlizeni_url, vdp_url
 from .logs import setup_logging
 from .mapa import build_map
-from .uzemni_plan import UPError, is_target, load_up
+from .uzemni_plan import UPError, load_up, select_targets
 
 log = logging.getLogger("parcely")
 
@@ -112,10 +112,11 @@ def process_ku(cfg: Config, ku: KatastralniUzemi, up: gpd.GeoDataFrame, kody: Ko
         log.info("%s: %d budov (%s)", label, len(buildings), res.budovy)
 
     up_ku = up.iloc[up.sindex.query(box(*parcels.total_bounds), predicate="intersects")]
-    target = up_ku[is_target(up_ku["up_kod"], cfg.cilove_kody, cfg["porovnani_kodu"])]
+    target = up_ku[up_ku["cilova"]]
     if target.empty:
         kody_up = ", ".join(sorted(up_ku["up_kod"].unique())[:40]) or "(ÚP KÚ nepokrývá)"
-        msg = f"v ÚP nejsou v rozsahu KÚ plochy s kódy {', '.join(cfg.cilove_kody)}; kódy v ÚP: {kody_up}"
+        msg = (f"v ÚP nejsou v rozsahu KÚ cílové plochy (kódy {', '.join(cfg.cilove_kody)}, "
+               f"názvy {', '.join(cfg['cilove_nazvy']) or '–'}); kódy v ÚP: {kody_up}")
         res.poznamky.append(msg)
         log.warning("%s: %s", label, msg)
     res.up_target = target
@@ -283,7 +284,16 @@ def run(cfg: Config, only_ku: list[int] | None = None, out_dir: Path | None = No
                 raise UPError(f"Obec „{ku.obec}“ nemá v configu uzemni_plan (cesta k datům ÚP).")
             if ku.obec not in up_cache:
                 try:
-                    up_cache[ku.obec] = load_up(ku.up, cfg["nazvy_ploch"], cfg.cache_dir)
+                    up_gdf = load_up(ku.up, cfg["nazvy_ploch"], cfg.cache_dir)
+                    up_gdf["cilova"] = select_targets(
+                        up_gdf,
+                        ku.up.cilove_kody or cfg.cilove_kody,
+                        ku.up.cilove_nazvy if ku.up.cilove_nazvy is not None else cfg["cilove_nazvy"],
+                        cfg["cilove_nazvy_vyjma"],
+                        cfg["porovnani_kodu"],
+                        f"ÚP {ku.obec}",
+                    ).astype(bool).values
+                    up_cache[ku.obec] = up_gdf
                 except (UPError, OSError) as exc:
                     up_cache[ku.obec] = exc
             up = up_cache[ku.obec]

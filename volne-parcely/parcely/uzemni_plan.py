@@ -27,29 +27,107 @@ class UPError(Exception):
 
 
 # Kódy ploch s rozdílným způsobem využití (2. úroveň členění dle jednotného standardu ÚP a
-# běžné varianty). Slouží jen k automatickému nalezení atributu s kódem (atribut_kod: auto).
+# běžné varianty) a jednopísmenné kódy starších ÚP (B, S, O, D, …). Slouží jen k automatickému
+# nalezení atributu s kódem (atribut_kod: auto).
 ZNAME_KODY = {
     "BH", "BI", "BV", "BX", "BK", "SC", "SM", "SV", "SR", "SX", "SK", "RI", "RZ", "RN", "RH", "RX",
     "OV", "OS", "OM", "OH", "OK", "OL", "OX", "PV", "PZ", "PX", "ZV", "ZS", "ZO", "ZP", "ZK", "ZX",
     "DS", "DZ", "DL", "DV", "DX", "DK", "TI", "TX", "TE", "TW", "VL", "VZ", "VD", "VX", "VT", "VS",
     "WT", "W", "NZ", "NL", "NP", "NS", "NX", "NK", "NT", "NV", "NU", "XX", "KX", "ZZ",
 }
+JEDNOPISMENNE = set("ABDHKLNOPRSTUVWXZ")
+
+
+def _text_columns(gdf: gpd.GeoDataFrame) -> list[str]:
+    return [str(c) for c in gdf.columns if c != gdf.geometry.name
+            and (gdf[c].dtype == object or pd.api.types.is_string_dtype(gdf[c]))]
 
 
 def detect_code_field(gdf: gpd.GeoDataFrame) -> tuple[str | None, float]:
-    """Najde atribut, jehož hodnoty nejvíc odpovídají kódům ploch (BI, SV, NZ…)."""
-    best, best_share = None, 0.0
-    for col in gdf.columns:
-        if col == gdf.geometry.name or not (gdf[col].dtype == object or pd.api.types.is_string_dtype(gdf[col])):
-            continue
+    """Najde atribut s kódem plochy (BI, SV, NZ… nebo jednopísmenné B, D, Z…).
+
+    Rozhoduje podíl hodnot, které vypadají jako kód; při shodě vyhraje atribut s víc různými
+    hodnotami (např. funkce plochy proti stavu S/N).
+    """
+    best, best_key = None, (0.0, 0)
+    for col in _text_columns(gdf):
         vals = gdf[col].dropna().astype(str).str.strip().str.upper()
+        vals = vals[vals != ""]
         if vals.empty:
             continue
         prefix = vals.str.extract(r"^([A-Z]{1,2})(?:$|[^A-Z])", expand=False)
-        share = float(prefix.isin(ZNAME_KODY).mean())
-        if share > best_share:
-            best, best_share = str(col), share
-    return (best, best_share) if best_share >= 0.5 else (None, best_share)
+        ok = prefix.isin(ZNAME_KODY) | prefix.isin(JEDNOPISMENNE)
+        share = float(ok.mean())
+        distinct = int(vals[ok].nunique())
+        if distinct < 3 or distinct > 60:  # S/N není funkce plochy; stovky hodnot = označení plochy
+            continue
+        if len(vals) >= 5 and vals.nunique() / len(vals) > 0.8:  # téměř unikátní = identifikátor (A001…)
+            continue
+        key = (round(share, 2), distinct)
+        if key > best_key:
+            best, best_key = col, key
+    return (best, best_key[0]) if best_key[0] >= 0.8 else (None, best_key[0])
+
+
+def detect_name_field(gdf: gpd.GeoDataFrame, kod_col: str) -> str | None:
+    """Najde atribut s názvem plochy: text „Plochy …“, který je jednoznačně určen kódem."""
+    from .ciselniky import normalize
+
+    best, best_n = None, 0
+    codes = gdf[kod_col].astype(str).str.strip()
+    for col in _text_columns(gdf):
+        if col == kod_col:
+            continue
+        vals = gdf[col].fillna("").astype(str).str.strip()
+        if (vals.map(normalize).str.startswith("ploch")).mean() < 0.5:
+            continue
+        pairs = pd.DataFrame({"k": codes, "n": vals}).drop_duplicates()
+        if pairs["k"].nunique() / max(len(pairs), 1) < 0.9:  # název musí být funkcí kódu
+            continue
+        n = int(vals.nunique())
+        if n > best_n:
+            best, best_n = col, n
+    return best
+
+
+def _stems(term: str) -> list[str]:
+    from .ciselniky import normalize
+
+    return [w[:5] for w in normalize(term).replace("-", " ").split() if w]
+
+
+def name_matches(name: str, terms: list[str]) -> bool:
+    """Shoda názvu s hledaným výrazem: každé slovo výrazu (prvních 5 znaků) začíná některé slovo názvu.
+
+    „smíšené obytné“ tak najde „Plochy smíšené obytné“ i „Plocha smíšená obytná“.
+    """
+    from .ciselniky import normalize
+
+    words = normalize(name).replace("-", " ").replace("(", " ").replace(")", " ").split()
+    for term in terms:
+        stems = _stems(term)
+        if stems and all(any(w.startswith(st) for w in words) for st in stems):
+            return True
+    return False
+
+
+def select_targets(up: gpd.GeoDataFrame, kody: list[str], nazvy: list[str], vyjma: list[str],
+                   mode: str = "presne", label: str = "ÚP") -> pd.Series:
+    """Příznak cílové plochy. Primárně podle kódů; když ÚP žádný z kódů nemá, podle názvů."""
+    by_code = is_target(up["up_kod"], kody, mode)
+    if by_code.any() or not nazvy:
+        return by_code
+    names = up["up_nazev"].fillna("").astype(str)
+    mask = names.map(lambda n: name_matches(n, nazvy)) & ~names.map(lambda n: name_matches(n, vyjma) if vyjma else False)
+    vybrano = sorted({f"{k} {n}".strip() for k, n in zip(up.loc[mask, "up_kod"], names[mask])})
+    if vybrano:
+        log.info("%s: kódy %s v ÚP nejsou – cílové plochy vybrány podle názvu (%s): %s",
+                 label, ", ".join(kody), ", ".join(nazvy), "; ".join(vybrano))
+    else:
+        log.warning("%s: ÚP neobsahuje kódy %s ani plochy s názvem %s. Kódy v ÚP: %s",
+                    label, ", ".join(kody), ", ".join(nazvy),
+                    "; ".join(sorted({f"{k} {n}".strip() for k, n in zip(up["up_kod"], names)})[:40]))
+    return mask
 
 
 def _samples(gdf: gpd.GeoDataFrame, col: str, n: int = 5) -> str:
@@ -124,9 +202,14 @@ def load_up(up: UzemniPlan, nazvy_ploch: dict[str, str] | None = None, cache_dir
             f"{label}: atribut s kódem plochy {co}. "
             f"Dostupné atributy (ukázky hodnot): {ukazky}. Nastav 'atribut_kod' v configu."
         )
-    nazev_col = find_field(fields, up.atribut_nazev) if up.atribut_nazev else None
-    if up.atribut_nazev and not nazev_col:
-        log.warning("%s: atribut s názvem plochy „%s“ neexistuje, použiji názvy z configu", label, up.atribut_nazev)
+    if up.atribut_nazev and up.atribut_nazev.casefold() == "auto":
+        nazev_col = detect_name_field(gdf, kod_col)
+        if nazev_col:
+            log.info("%s: atribut s názvem plochy určen automaticky: %s", label, nazev_col)
+    else:
+        nazev_col = find_field(fields, up.atribut_nazev) if up.atribut_nazev else None
+        if up.atribut_nazev and not nazev_col:
+            log.warning("%s: atribut s názvem plochy „%s“ neexistuje, použiji názvy z configu", label, up.atribut_nazev)
 
     for attr, allowed in up.filtr.items():
         col = find_field(fields, attr)

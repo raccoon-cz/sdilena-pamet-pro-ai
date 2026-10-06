@@ -89,3 +89,14 @@ def test_odkazy():
     assert mapy_url(
         "https://mapy.com/fnc/v1/showmap?mapset=aerial&center={lon},{lat}&zoom=18&marker=true", 16.6, 49.19
     ) == "https://mapy.com/fnc/v1/showmap?mapset=aerial&center=16.600000,49.190000&zoom=18&marker=true"
+
+
+def test_cely_beh_s_up_stareho_typu(tmp_path):
+    """ÚP bez kódů standardu (jako Kuřim) dá díky výběru podle názvu stejné kandidáty."""
+    cfg = make_cfg(tmp_path)
+    cfg.ku[0].up.cesta = td.build_up_stary(tmp_path / "stary.gpkg")
+    cfg.ku[0].up.atribut_kod = "auto"
+    res = run(cfg, out_dir=tmp_path / "out")
+    assert res.ok
+    assert set(res.kandidati["id_parcely"]) == {str(td.parcel_id(p)) for p in td.EXPECTED_CANDIDATES}
+    assert set(res.kandidati["up_kod"]) == {"B"}
