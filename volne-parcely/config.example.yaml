@@ -1,0 +1,77 @@
+# Konfigurace hledání nezastavěných parcel.
+# Zkopíruj na config.yaml a uprav. Relativní cesty se berou vůči složce tohoto souboru.
+#
+# Tento příklad jde spustit hned: Kuřim a Čebín (ORP Kuřim, Brno-venkov) mají územní plán
+# veřejně jako ArcGIS službu MÚ Kuřim, katastr se stáhne z ČÚZK.
+
+# ---------------------------------------------------------------------------
+# Obce, jejich územní plán a katastrální území (KÚ).
+# Kód KÚ najdeš příkazem:  python main.py ku "Kuřim"
+# ---------------------------------------------------------------------------
+obce:
+  - nazev: Kuřim
+    uzemni_plan:
+      # Soubor (SHP / GPKG / GML) nebo URL veřejné ArcGIS služby (…/FeatureServer[/číslo vrstvy]).
+      cesta: https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_kurim/FeatureServer
+      # vrstva: 8                  # u služby/souboru s více vrstvami; jinak se vybere „plochy s rozdílným…“
+      atribut_kod: auto            # atribut s kódem plochy; auto = najde se sám (Kuřim: FUKCE_2)
+      # atribut_nazev: auto        # atribut s názvem plochy (Kuřim: POPIS)
+      # cilove_kody: [B]           # přepíše globální cilove_kody jen pro tuto obec
+      # cilove_nazvy: [smíšené obytné]
+    katastralni_uzemi:
+      - kod: 677655
+        nazev: Kuřim
+
+  - nazev: Čebín
+    uzemni_plan:
+      cesta: https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_cebin/FeatureServer
+      atribut_kod: auto
+    katastralni_uzemi:
+      - kod: 618764
+        nazev: Čebín
+
+  # Obec s ÚP v souboru (např. data v jednotném standardu od obce / z NGÚP):
+  # - nazev: Moravany
+  #   uzemni_plan:
+  #     cesta: data/up/moravany/PlochyRZV_p.shp
+  #     atribut_kod: Typ           # jednotný standard: Typ
+  #     # crs: EPSG:5514           # jen když soubor nemá .prj
+  #     # kodovani: cp1250         # jen když SHP nemá .cpg a diakritika je rozbitá
+  #     # filtr: {CasH: [2]}       # jen plochy změn (zastavitelné): 1 = stabilizovaná, 2 = návrh
+  #   katastralni_uzemi:
+  #     - kod: 698504
+  #       nazev: Moravany u Brna
+
+# ---------------------------------------------------------------------------
+# Kritéria
+# ---------------------------------------------------------------------------
+cilove_kody: [BI, BV, BX, SV, SM]
+# ÚP bez kódů jednotného standardu (starší ÚP mají místní kódy, např. „B“): cílové plochy
+# se vyberou podle názvu. Výběr se vypíše do logu – zkontroluj ho.
+cilove_nazvy: [bydlení, smíšené obytné]
+cilove_nazvy_vyjma: [hromadné]
+porovnani_kodu: presne          # presne | prefix (prefix: "BI" sedí i na "BI.1")
+min_vymera_m2: 600
+max_vymera_m2: 5000
+min_podil_v_plose: 0.6
+max_vzdalenost_od_komunikace_m: 5
+max_prekryv_budovy_m2: 10
+
+# Volitelné úpravy (výchozí hodnoty viz parcely/config.py):
+# nazvy_ploch:                    # názvy ploch, když je ÚP nemá v atributech
+#   BI: bydlení individuální
+# druhy_pozemku:                  # názvy z číselníku ČÚZK SC_D_POZEMKU nebo kódy
+#   zastavena: [zastavěná plocha a nádvoří]
+#   lesni: [lesní pozemek]
+#   bonus: [zahrada, orná půda]
+#   nevhodne: [vodní plocha]      # [] = nevyřazovat
+# pristup_zpusoby_vyuziti: [silnice, ostatní komunikace]   # SC_ZP_VYUZITI_POZ
+# nevhodne_zpusoby_vyuziti: [silnice, ostatní komunikace, dálnice, dráha, ostatní dopravní plocha]
+# skore:
+#   idealni_vymera_m2: [800, 1500]
+#   vahy: {podil: 40, pristup: 25, vymera: 20, druh: 15}
+# budovy:
+#   zdroj: auto                   # auto | shp | vfr | soubor | zadne
+#   soubor: data/budovy.gpkg      # při zdroj: soubor
+# cache_dir: data/cache
+# output_dir: output

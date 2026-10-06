@@ -1,0 +1,20 @@
+# CI: ověření na reálných datech ČÚZK. Územní plán je tu NÁHRADNÍ (celé KÚ = BI),
+# dokud není k dispozici skutečný ÚP – ověřuje se tím načtení KN, budovy, přístup, výstupy.
+obce:
+  - nazev: Moravany
+    uzemni_plan:
+      cesta: ../data/up/ci/cele_ku_bi.gpkg
+      atribut_kod: Typ
+    katastralni_uzemi:
+      - kod: 698504
+        nazev: Moravany u Brna
+  - nazev: Ostopovice
+    uzemni_plan:
+      cesta: ../data/up/ci/cele_ku_bi.gpkg
+      atribut_kod: Typ
+    katastralni_uzemi:
+      - kod: 713392
+        nazev: Ostopovice
+
+cache_dir: ../data/cache
+output_dir: ../output/ci

@@ -1,0 +1,13 @@
+# Běh na SYNTETICKÝCH datech (bez sítě). Data vytvoří:  python main.py testdata
+# Pak:  python main.py run --config config.test.yaml
+obce:
+  - nazev: Testov (SYNTETICKÁ DATA)
+    uzemni_plan:
+      cesta: data/test/up/testov/PlochyRZV_p.shp
+      atribut_kod: Typ
+    katastralni_uzemi:
+      - kod: 999901
+        nazev: Testov (SYNTETICKÉ KÚ)
+
+cache_dir: data/test/cache
+output_dir: output/test
