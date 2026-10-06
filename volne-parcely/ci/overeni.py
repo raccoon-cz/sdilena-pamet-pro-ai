@@ -3,6 +3,7 @@
     python ci/overeni.py up-cele-ku 698504 713392     # náhradní ÚP: celé KÚ jako plocha BI
     python ci/overeni.py vfr 698504                     # záloha budov z RÚIAN VFR
     python ci/overeni.py vysledky ../output/ci          # výpis Excelu do logu
+    python ci/overeni.py config-sluzby ci/config.sluzby.yaml "Kuřim" URL "Čebín" URL
 """
 from __future__ import annotations
 
@@ -84,6 +85,26 @@ def vysledky(out_dir: str) -> None:
         print("\nUKAZKA_ID", k["ID parcely"].iloc[0], k["Mapy.cz"].iloc[0] if "Mapy.cz" in k else "")
 
 
+def config_sluzby(out: str, pary: list[str]) -> None:
+    """Config pro obce, jejichž ÚP je v ArcGIS službě: KÚ obce se dohledají v číselníku ČÚZK."""
+    import yaml
+
+    from parcely.ciselniky import hledej_ku, normalize
+
+    cfg = load_config(CFG)
+    obce = []
+    for obec, url in zip(pary[::2], pary[1::2]):
+        df = hledej_ku(cfg, obec)
+        df = df[df["OBEC"].fillna("").map(normalize) == normalize(obec)]
+        kus = [{"kod": int(k), "nazev": str(n)} for k, n in zip(df["KOD"], df["NAZEV"])]
+        print(f"{obec}: KÚ {kus}")
+        obce.append({"nazev": obec, "uzemni_plan": {"cesta": url, "atribut_kod": "auto"}, "katastralni_uzemi": kus})
+    raw = {"obce": obce, "cache_dir": "../data/cache", "output_dir": "../output/sluzby"}
+    Path(out).write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    print(Path(out).read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     cmd, *args = sys.argv[1:]
-    {"up-cele-ku": lambda: up_cele_ku(args), "vfr": lambda: vfr(args[0]), "vysledky": lambda: vysledky(args[0])}[cmd]()
+    {"up-cele-ku": lambda: up_cele_ku(args), "vfr": lambda: vfr(args[0]), "vysledky": lambda: vysledky(args[0]),
+     "config-sluzby": lambda: config_sluzby(args[0], args[1:])}[cmd]()

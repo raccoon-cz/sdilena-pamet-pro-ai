@@ -120,7 +120,7 @@ def _deep_merge(base: dict, override: dict) -> dict:
 @dataclass
 class UzemniPlan:
     obec: str
-    cesta: Path
+    cesta: Path | str  # soubor, nebo URL veřejné ArcGIS služby (…/FeatureServer[/id])
     vrstva: str | None = None
     atribut_kod: str = "Typ"
     atribut_nazev: str | None = None
@@ -129,6 +129,12 @@ class UzemniPlan:
     filtr: dict[str, list[str]] = field(default_factory=dict)
     # Atributy ÚP, které se vypíšou do výstupu jako doplňující informace (pokud v datech jsou).
     atributy_info: list[str] = field(default_factory=lambda: ["CasH", "Index"])
+    # jen pro ArcGIS službu: podmínka dotazu na straně serveru
+    where: str = "1=1"
+
+    @property
+    def je_sluzba(self) -> bool:
+        return isinstance(self.cesta, str) and self.cesta.startswith(("http://", "https://"))
 
 
 @dataclass
@@ -195,9 +201,13 @@ def _parse_up(obec: str, data: dict | None, cfg_dir: Path) -> UzemniPlan | None:
         return None
     if not isinstance(data, dict) or not data.get("cesta"):
         raise ConfigError(f"Obec „{obec}“: u územního plánu chybí klíč 'cesta'.")
-    cesta = Path(str(data["cesta"])).expanduser()
-    if not cesta.is_absolute():
-        cesta = cfg_dir / cesta
+    raw_cesta = str(data["cesta"]).strip()
+    if raw_cesta.startswith(("http://", "https://")):
+        cesta: Path | str = raw_cesta
+    else:
+        cesta = Path(raw_cesta).expanduser()
+        if not cesta.is_absolute():
+            cesta = cfg_dir / cesta
     filtr = data.get("filtr") or {}
     if not isinstance(filtr, dict):
         raise ConfigError(f"Obec „{obec}“: 'filtr' musí být slovník {{atribut: [hodnoty]}}.")
@@ -205,13 +215,14 @@ def _parse_up(obec: str, data: dict | None, cfg_dir: Path) -> UzemniPlan | None:
     return UzemniPlan(
         obec=obec,
         cesta=cesta,
-        vrstva=data.get("vrstva"),
+        vrstva=str(data["vrstva"]) if data.get("vrstva") is not None else None,
         atribut_kod=str(data.get("atribut_kod") or "Typ"),
         atribut_nazev=data.get("atribut_nazev"),
         crs=str(data["crs"]) if data.get("crs") else None,
         kodovani=data.get("kodovani"),
         filtr=filtr,
         atributy_info=[str(a) for a in (data.get("atributy_info") or ["CasH", "Index"])],
+        where=str(data.get("where") or "1=1"),
     )
 
 

@@ -83,6 +83,21 @@ jobs:
             echo
           done
 
+      - name: Reálný ÚP ze služby MÚ Kuřim – inspect
+        continue-on-error: true
+        run: |
+          python main.py inspect "https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_kurim/FeatureServer" -c ci/config.real.yaml --vzorku 8
+          python main.py inspect "https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_cebin/FeatureServer" -c ci/config.real.yaml --vzorku 8
+
+      - name: Ostrý běh s reálným ÚP – Kuřim a Čebín
+        continue-on-error: true
+        run: |
+          python ci/overeni.py config-sluzby ci/config.sluzby.yaml \
+            "Kuřim" "https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_kurim/FeatureServer" \
+            "Čebín" "https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_cebin/FeatureServer"
+          python main.py run -c ci/config.sluzby.yaml
+          python ci/overeni.py vysledky output/sluzby
+
       - name: Náhradní ÚP (celé KÚ = BI) a celý běh
         run: |
           python ci/overeni.py up-cele-ku 698504 713392
@@ -104,5 +119,7 @@ jobs:
         if: always()
         with:
           name: volne-parcely-vystupy
-          path: volne-parcely/output/ci
+          path: |
+            volne-parcely/output/ci
+            volne-parcely/output/sluzby
           retention-days: 14

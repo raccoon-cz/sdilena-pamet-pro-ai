@@ -12,8 +12,7 @@ def get(url: str):
         return json.load(r)
 
 
-QUERIES = ['"územní plán" Brno', "územní plán jihomoravský", "ÚPmB", "uzemni plan JMK",
-           "plochy s rozdílným způsobem využití"]
+QUERIES = ["owner:mukuoi", "plochy s rozdílným způsobem využití", "UP_ AND (Brno OR jihomoravský OR JMK)"]
 
 for q in QUERIES:
     url = "https://www.arcgis.com/sharing/rest/search?" + urllib.parse.urlencode(
@@ -26,6 +25,17 @@ for q in QUERIES:
     print(f"== AGOL '{q}': {d.get('total')} výsledků")
     for it in d.get("results", []):
         print(" -", it.get("title"), "|", it.get("type"), "|", it.get("owner"), "|", it.get("url"), "|", it.get("access"))
+
+for folder in ("PUBLIC", "OD", "KAM", "Hosted"):
+    try:
+        d = get(f"https://gis.brno.cz/ags1/rest/services/{folder}?f=json")
+        names = [f"{s['name']} ({s['type']})" for s in d.get("services", [])]
+        print(f"== gis.brno.cz/ags1 {folder}: {len(names)} služeb")
+        for n in names:
+            if any(k in n.lower() for k in ("up", "uzem", "územ", "plan", "plán", "rzv", "funk")):
+                print(" -", n)
+    except Exception as exc:  # noqa: BLE001
+        print("Brno", folder, "ERR", exc)
 
 try:
     d = get("https://geodata-jmkgis.opendata.arcgis.com/api/search/v1/collections/all/items?"

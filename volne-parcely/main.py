@@ -75,14 +75,28 @@ def download(
     for nazev in ("SC_D_POZEMKU", "SC_ZP_VYUZITI_POZ"):
         c = load_ciselnik(cfg, nazev)
         typer.echo(f"  číselník {nazev}: {'OK, ' + str(len(c.hodnoty)) + ' položek' if c else 'nedostupný'}")
+    # územní plány z ArcGIS služeb do cache
+    from parcely.uzemni_plan import UPError, resolve_source
+
+    hotovo: set[str] = set()
+    for k in cfg.ku:
+        if k.up is None or not k.up.je_sluzba or k.obec in hotovo:
+            continue
+        hotovo.add(k.obec)
+        try:
+            path, _ = resolve_source(k.up, cfg.cache_dir, force=force)
+            typer.echo(f"  ÚP {k.obec}: {path}")
+        except UPError as exc:
+            chyby += 1
+            typer.secho(f"  ÚP {k.obec}: CHYBA {exc}", fg=typer.colors.RED)
     raise typer.Exit(1 if chyby else 0)
 
 
 @app.command()
 def inspect(
-    cil: str = typer.Argument(..., help="Kód KÚ (stáhne/použije cache) nebo cesta k souboru (např. data ÚP)"),
+    cil: str = typer.Argument(..., help="Kód KÚ, cesta k souboru ÚP, nebo URL ArcGIS služby s ÚP"),
     config: Path = ConfigOpt,
-    vrstva: Optional[str] = typer.Option(None, "--vrstva", help="Jen tato vrstva"),
+    vrstva: Optional[str] = typer.Option(None, "--vrstva", help="Jen tato vrstva (u služby id nebo název)"),
     hodnoty: Optional[str] = typer.Option(None, "--hodnoty", help="Vypiš četnosti hodnot tohoto atributu"),
     vzorku: int = typer.Option(3, "--vzorku", help="Počet ukázkových hodnot na atribut"),
 ):
@@ -128,6 +142,25 @@ def inspect(
                 kod = int(num) if pd.notna(num) and float(num).is_integer() else None
                 popis = c.popis(kod) if c is not None and kod is not None else ""
                 typer.echo(f"  {str(kod if kod is not None else val):<12}{n:>8}  {popis}")
+        return
+
+    from parcely.arcgis import ArcGISError, is_service_url, list_layers, load_cached
+
+    if is_service_url(cil):
+        cfg = _cfg(config) if config.exists() else _default_cfg()
+        try:
+            for lyr in list_layers(cil):
+                typer.echo(f"  vrstva {lyr['id']}: {lyr['name']} ({lyr['geometryType']})")
+            path = load_cached(cfg.cache_dir, cil, vrstva)
+        except ArcGISError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED, err=True)
+            raise typer.Exit(1)
+        typer.echo(f"Staženo do cache: {path}\n")
+        typer.echo(format_layer(describe_layer(str(path), layer="up", samples=vzorku)))
+        if hodnoty:
+            typer.echo(f"\nČetnosti {hodnoty}:")
+            for val, n in value_counts(str(path), hodnoty, layer="up").items():
+                typer.echo(f"  {str(val):<16}{n:>8}")
         return
 
     path = Path(cil)

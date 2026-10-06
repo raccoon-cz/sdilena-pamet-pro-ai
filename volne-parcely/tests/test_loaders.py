@@ -107,3 +107,19 @@ def test_up_filtr_atributu(tmp_path):
     path = td.build_up(tmp_path / "up.shp")
     gdf = load_up(UzemniPlan(obec="T", cesta=path, filtr={"CasH": ["2"]}))
     assert set(gdf["up_kod"]) == {"SV", "SM"}
+
+
+def test_up_auto_atribut(tmp_path):
+    path = td.build_up(tmp_path / "up.shp")
+    gdf = load_up(UzemniPlan(obec="T", cesta=path, atribut_kod="auto"))
+    assert {"BI", "SV", "SM", "NZ"} <= set(gdf["up_kod"])
+
+
+def test_up_auto_atribut_bez_kodu(tmp_path):
+    import geopandas as gpd
+    from shapely.geometry import box
+
+    path = tmp_path / "x.gpkg"
+    gpd.GeoDataFrame({"popis": ["les", "louka"]}, geometry=[box(0, 0, 1, 1), box(1, 0, 2, 1)], crs=5514).to_file(path)
+    with pytest.raises(UPError, match="nepodařilo určit automaticky"):
+        load_up(UzemniPlan(obec="T", cesta=path, atribut_kod="auto"))

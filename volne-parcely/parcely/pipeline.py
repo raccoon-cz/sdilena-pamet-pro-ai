@@ -283,7 +283,7 @@ def run(cfg: Config, only_ku: list[int] | None = None, out_dir: Path | None = No
                 raise UPError(f"Obec „{ku.obec}“ nemá v configu uzemni_plan (cesta k datům ÚP).")
             if ku.obec not in up_cache:
                 try:
-                    up_cache[ku.obec] = load_up(ku.up, cfg["nazvy_ploch"])
+                    up_cache[ku.obec] = load_up(ku.up, cfg["nazvy_ploch"], cfg.cache_dir)
                 except (UPError, OSError) as exc:
                     up_cache[ku.obec] = exc
             up = up_cache[ku.obec]

@@ -26,6 +26,32 @@ class UPError(Exception):
     """Data ÚP chybí nebo nemají očekávanou strukturu."""
 
 
+# Kódy ploch s rozdílným způsobem využití (2. úroveň členění dle jednotného standardu ÚP a
+# běžné varianty). Slouží jen k automatickému nalezení atributu s kódem (atribut_kod: auto).
+ZNAME_KODY = {
+    "BH", "BI", "BV", "BX", "BK", "SC", "SM", "SV", "SR", "SX", "SK", "RI", "RZ", "RN", "RH", "RX",
+    "OV", "OS", "OM", "OH", "OK", "OL", "OX", "PV", "PZ", "PX", "ZV", "ZS", "ZO", "ZP", "ZK", "ZX",
+    "DS", "DZ", "DL", "DV", "DX", "DK", "TI", "TX", "TE", "TW", "VL", "VZ", "VD", "VX", "VT", "VS",
+    "WT", "W", "NZ", "NL", "NP", "NS", "NX", "NK", "NT", "NV", "NU", "XX", "KX", "ZZ",
+}
+
+
+def detect_code_field(gdf: gpd.GeoDataFrame) -> tuple[str | None, float]:
+    """Najde atribut, jehož hodnoty nejvíc odpovídají kódům ploch (BI, SV, NZ…)."""
+    best, best_share = None, 0.0
+    for col in gdf.columns:
+        if col == gdf.geometry.name or not (gdf[col].dtype == object or pd.api.types.is_string_dtype(gdf[col])):
+            continue
+        vals = gdf[col].dropna().astype(str).str.strip().str.upper()
+        if vals.empty:
+            continue
+        prefix = vals.str.extract(r"^([A-Z]{1,2})(?:$|[^A-Z])", expand=False)
+        share = float(prefix.isin(ZNAME_KODY).mean())
+        if share > best_share:
+            best, best_share = str(col), share
+    return (best, best_share) if best_share >= 0.5 else (None, best_share)
+
+
 def _samples(gdf: gpd.GeoDataFrame, col: str, n: int = 5) -> str:
     vals = gdf[col].dropna().astype(str).unique()[:n]
     return ", ".join(vals)
@@ -53,28 +79,49 @@ def pick_layer(path: Path, vrstva: str | None) -> str | None:
     )
 
 
-def load_up(up: UzemniPlan, nazvy_ploch: dict[str, str] | None = None) -> gpd.GeoDataFrame:
-    """Načte ÚP obce. Výstup: up_kod, up_nazev, up_detail, geometry (EPSG:5514)."""
-    label = f"ÚP {up.obec}"
-    if not up.cesta.exists():
+def resolve_source(up: UzemniPlan, cache_dir: Path | None = None, force: bool = False) -> tuple[Path, str | None]:
+    """Vrátí (soubor, vrstva). ArcGIS službu nejdřív stáhne do cache."""
+    if up.je_sluzba:
+        from .arcgis import ArcGISError, load_cached
+
+        try:
+            return load_cached(Path(cache_dir or "data/cache"), str(up.cesta), up.vrstva, up.where, force=force), "up"
+        except ArcGISError as exc:
+            raise UPError(f"ÚP {up.obec}: {exc}") from exc
+    path = Path(up.cesta)
+    if not path.exists():
         raise UPError(
-            f"Chybí data ÚP pro obec „{up.obec}“: soubor {up.cesta} neexistuje. "
+            f"Chybí data ÚP pro obec „{up.obec}“: soubor {path} neexistuje. "
             "Stáhni vektorová data ÚP (README, sekce Data územního plánu) a oprav 'cesta' v configu."
         )
-    layer = pick_layer(up.cesta, up.vrstva)
+    return path, pick_layer(path, up.vrstva)
+
+
+def load_up(up: UzemniPlan, nazvy_ploch: dict[str, str] | None = None, cache_dir: Path | None = None) -> gpd.GeoDataFrame:
+    """Načte ÚP obce ze souboru nebo z ArcGIS služby. Výstup: up_kod, up_nazev, up_detail, geometry (EPSG:5514)."""
+    label = f"ÚP {up.obec}"
+    path, layer = resolve_source(up, cache_dir)
     try:
-        gdf = pyogrio.read_dataframe(up.cesta, layer=layer, encoding=up.kodovani)
+        gdf = pyogrio.read_dataframe(path, layer=layer, encoding=up.kodovani)
     except Exception as exc:  # GDAL chyby nemají jednotnou třídu
-        raise UPError(f"{label}: soubor {up.cesta} nejde přečíst: {exc}") from exc
+        raise UPError(f"{label}: soubor {path} nejde přečíst: {exc}") from exc
     if gdf.empty:
-        raise UPError(f"{label}: vrstva {layer or '(výchozí)'} v {up.cesta} je prázdná.")
+        raise UPError(f"{label}: vrstva {layer or '(výchozí)'} v {path} je prázdná.")
 
     fields = [c for c in gdf.columns if c != gdf.geometry.name]
-    kod_col = find_field(fields, up.atribut_kod)
+    if up.atribut_kod.casefold() == "auto":
+        kod_col, share = detect_code_field(gdf)
+        if kod_col:
+            log.info("%s: atribut s kódem plochy určen automaticky: %s (%.0f %% hodnot jsou kódy ploch)",
+                     label, kod_col, share * 100)
+    else:
+        kod_col = find_field(fields, up.atribut_kod)
     if not kod_col:
         ukazky = "; ".join(f"{c}: {_samples(gdf, c, 3)}" for c in fields[:15])
+        co = ("se nepodařilo určit automaticky" if up.atribut_kod.casefold() == "auto"
+              else f"„{up.atribut_kod}“ neexistuje")
         raise UPError(
-            f"{label}: atribut s kódem plochy „{up.atribut_kod}“ neexistuje. "
+            f"{label}: atribut s kódem plochy {co}. "
             f"Dostupné atributy (ukázky hodnot): {ukazky}. Nastav 'atribut_kod' v configu."
         )
     nazev_col = find_field(fields, up.atribut_nazev) if up.atribut_nazev else None
