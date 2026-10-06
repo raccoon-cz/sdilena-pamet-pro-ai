@@ -1,0 +1,58 @@
+# Konfigurace hledání nezastavěných parcel.
+# Zkopíruj na config.yaml a uprav. Relativní cesty se berou vůči složce tohoto souboru.
+
+# ---------------------------------------------------------------------------
+# Obce, jejich územní plán a katastrální území (KÚ).
+# Kód KÚ najdeš příkazem:  python main.py ku "Moravany"
+# ---------------------------------------------------------------------------
+obce:
+  - nazev: Moravany
+    uzemni_plan:
+      # Vektorová data ÚP (SHP / GPKG / GML). Kde je vzít: README → Data územního plánu.
+      cesta: data/up/moravany/PlochyRZV_p.shp
+      # vrstva: PlochyRZV_p        # jen u souborů s více vrstvami (GPKG, GML)
+      atribut_kod: Typ             # atribut s kódem plochy (jednotný standard: Typ)
+      # atribut_nazev: Nazev       # atribut s názvem plochy, pokud v datech je
+      # crs: EPSG:5514             # jen když soubor nemá .prj
+      # kodovani: cp1250           # jen když SHP nemá .cpg a diakritika je rozbitá
+      # filtr:                     # volitelně: jen plochy změn (zastavitelné) dle standardu
+      #   CasH: [2]                # 1 = stabilizovaná, 2 = návrh
+    katastralni_uzemi:
+      - kod: 698504
+        nazev: Moravany u Brna
+
+  - nazev: Ostopovice
+    uzemni_plan:
+      cesta: data/up/ostopovice/PlochyRZV_p.shp
+      atribut_kod: Typ
+    katastralni_uzemi:
+      - kod: 713392
+        nazev: Ostopovice
+
+# ---------------------------------------------------------------------------
+# Kritéria
+# ---------------------------------------------------------------------------
+cilove_kody: [BI, BV, BX, SV, SM]
+porovnani_kodu: presne          # presne | prefix (prefix: "BI" sedí i na "BI.1")
+min_vymera_m2: 600
+max_vymera_m2: 5000
+min_podil_v_plose: 0.6
+max_vzdalenost_od_komunikace_m: 5
+max_prekryv_budovy_m2: 10
+
+# Volitelné úpravy (výchozí hodnoty viz parcely/config.py):
+# nazvy_ploch:                    # názvy ploch, když je ÚP nemá v atributech
+#   BI: bydlení individuální
+# druhy_pozemku:                  # názvy z číselníku ČÚZK SC_D_POZEMKU nebo kódy
+#   zastavena: [zastavěná plocha a nádvoří]
+#   lesni: [lesní pozemek]
+#   bonus: [zahrada, orná půda]
+# pristup_zpusoby_vyuziti: [silnice, ostatní komunikace]   # SC_ZP_VYUZITI_POZ
+# skore:
+#   idealni_vymera_m2: [800, 1500]
+#   vahy: {podil: 40, pristup: 25, vymera: 20, druh: 15}
+# budovy:
+#   zdroj: auto                   # auto | shp | vfr | soubor | zadne
+#   soubor: data/budovy.gpkg      # při zdroj: soubor
+# cache_dir: data/cache
+# output_dir: output
