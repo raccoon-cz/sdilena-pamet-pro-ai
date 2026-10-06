@@ -97,8 +97,10 @@ Viz `config.example.yaml`. Hlavní parametry:
 | `min_podil_v_plose` | 0.6 | min. podíl parcely v cílových plochách |
 | `max_vzdalenost_od_komunikace_m` | 5 | „sousedí s komunikací“ |
 | `max_prekryv_budovy_m2` | 10 | budova zasahující víc parcelu vyřadí |
-| `druhy_pozemku.*` | názvy z číselníku | zastavěná / lesní / bonus ve skóre |
+| `druhy_pozemku.*` | názvy z číselníku | zastavěná / lesní / bonus ve skóre / nevhodné (`[vodní plocha]`) |
 | `pristup_zpusoby_vyuziti` | `[silnice, ostatní komunikace]` | názvy z číselníku `SC_ZP_VYUZITI_POZ` |
+| `nevhodne_zpusoby_vyuziti` | silnice, ostatní komunikace, dálnice, dráha, ostatní dopravní plocha | parcela sama je komunikací → vyřadit (`[]` = vypnuto) |
+| `vyrazene_min_podil` / `vyrazene_min_vymera_m2` | 0.1 / 300 | co se ještě ukáže v listu „Lesní a vyřazené“ |
 | `kn.*` | viz `parcely/config.py` | názvy vrstev a atributů SHP balíčku |
 | `budovy.zdroj` | `auto` | `auto` (SHP, jinak RÚIAN VFR) / `shp` / `vfr` / `soubor` / `zadne` |
 | `odkazy.*` | | šablony URL (Nahlížení, VDP, Mapy.cz) |
@@ -115,9 +117,13 @@ kódy tak nejsou natvrdo v kódu. Lze zadat i přímo číslo.
    ÚP se nepočítají dvakrát) a podíl z plochy parcely. Zaznamená kód a název plochy, jejíž kód pokrývá
    z parcely nejvíc.
 3. Filtry v tomto pořadí (počty vyřazených se logují po krocích):
-   druh „zastavěná plocha a nádvoří“ → budova zasahující > 10 m² (max. jedné budovy) →
+   druh „zastavěná plocha a nádvoří“ → **nevhodná parcela** (sama je silnicí / ostatní komunikací /
+   dopravní plochou, nebo je to vodní plocha) → budova zasahující > 10 m² (max. jedné budovy) →
    výměra mimo rozsah (výměra z KN, když chybí, plocha geometrie) → podíl pod limitem →
    lesní pozemek (nemaže se, jde do listu „Lesní a vyřazené“).
+   Krok „nevhodná parcela“ v zadání nebyl; přidal jsem ho po běhu na reálných datech, kde mezi
+   kandidáty vycházely uliční parcely uvnitř ploch bydlení. Vypne se `nevhodne_zpusoby_vyuziti: []`
+   a `druhy_pozemku.nevhodne: []`.
 4. Přístup: vzdálenost k nejbližší parcele se způsobem využití silnice / ostatní komunikace
    (z **všech** zpracovaných KÚ, takže funguje i přes hranici KÚ). Jen informace, nefiltruje se.
 5. Skóre 0–100: podíl × 40 + přístup 25 + výměra 20 (plně v 800–1500 m², lineárně k 0 na min/max
@@ -130,9 +136,11 @@ kódy tak nejsou natvrdo v kódu. Lze zadat i přímo číslo.
     přístup, souřadnice středu (WGS84, bod uvnitř parcely), odkaz do Nahlížení, odkaz na Mapy.cz;
     navíc vzdálenost ke komunikaci, rozpad skóre, způsob využití, detail plochy ÚP (`CasH`, `Index`),
     překryv budovy, ID parcely, odkaz na RÚIAN (VDP).
-  - **Lesní a vyřazené** – lesní pozemky, které by jinak prošly, a vyřazené parcely s podílem
-    v cílové ploše ≥ 10 % (důvod + všechny důvody). Název listu nemůže obsahovat „/“ (Excel to
-    nepovoluje), proto „Lesní a vyřazené“.
+  - **Lesní a vyřazené** – lesní pozemky, které by jinak prošly, a „těsně vyřazené“ parcely
+    k ručnímu posouzení: podíl v cílové ploše ≥ 10 %, výměra ≥ 300 m², vyřazené kvůli budově,
+    výměře (např. velké pozemky k dělení) nebo podílu. Stávající domy (zastavěná plocha),
+    komunikace a drobné zbytky tam nejsou – jen v počtech. Název listu nemůže obsahovat „/“
+    (Excel to nepovoluje), proto „Lesní a vyřazené“.
   - **Parametry běhu** – parametry, stav každého KÚ, počty v krocích filtru.
   - Hlavička, autofilter, ukotvené záhlaví, šířky sloupců, klikatelné odkazy.
 - `mapa.html` – ortofoto ČÚZK (WMS) jako podklad, OSM, volitelně katastrální mapa (WMS), plochy ÚP
@@ -145,36 +153,38 @@ Selhání jednoho KÚ (stažení, chybějící ÚP, neznámý atribut) se zapí�
 
 ## Co je ověřené a co ne
 
-Při vývoji nebyly servery ČÚZK z vývojového prostředí dostupné (blokovala je síťová politika),
-takže **na reálném KÚ jsem nástroj nespustil**. Struktura dat je převzatá z veřejně publikovaného
-rozboru, kde ji autor změřil na stažených datech (projekt
-[matejasiska/viagem-parcely](https://github.com/matejasiska/viagem-parcely), `NOTES.md`, stav k 2026-10-05),
-a z dokumentace ČÚZK. Názvy jsou proto v configu a `inspect` je ukáže – **před prvním ostrým
-během spusť `inspect` a porovnej.**
+Sandbox, ve kterém nástroj vznikl, na servery ČÚZK nedosáhne, proto ověření na reálných datech
+běží v GitHub Actions (`.github/workflows/volne-parcely.yml`, job `realna-data`): stáhne KÚ
+698504 Moravany u Brna a 713392 Ostopovice, vypíše strukturu a pustí celý běh. Výstupy jsou
+v artifactu běhu.
+
+**Ověřeno na reálných datech (10/2026):**
+
+| Položka | Zjištění |
+|---|---|
+| URL SHP `https://services.cuzk.gov.cz/shp/ku/epsg-5514/{kod}.zip` | funguje (698504: 2,2 MB, 106 souborů) |
+| Kódování | balíček nese `.cpg` = **UTF-8** (ne CP1250); loader se řídí `.cpg`, `kn.kodovani` je jen záloha |
+| `PARCELY_KN_P` (polygony) | `ID, ID_2, TYPPPD_KOD, KATUZE_KOD, OBEC_KOD`; `ID`/`ID_2` jsou **text** |
+| `PARCELY_KN_DEF` (body) | `ID, ID_2, TYPPPD_KOD, KATUZE_KOD, TEXT_KM, PAR_VYMERA, DRUPOZ_KOD, ZPVYPA_KOD, BUD_ID, STAV_PARC`; spojení přes `ID_2` 1:1 (6 085 = 6 085) |
+| `BUDOVY_P` | polygony budov (698504: 1 328) |
+| Další vrstvy | `KATASTRALNI_UZEMI_P`, `HRANICE_PARCEL_L`, `PARCELY_KN_T/B/L`, `BUDOVY_DEF/B`, `VB_P`, `BODOVE_POLE_*`, `DALSI_PRVKY_MAPY_*`… |
+| Číselníky `sestavy/cis/{NAZEV}.zip` | CSV CP1250, `;`, `KOD;NAZEV;…`; `SC_D_POZEMKU` 11 položek, `SC_ZP_VYUZITI_POZ` 30 položek (16 = silnice, 17 = ostatní komunikace) |
+| `UI_KATASTRALNI_UZEMI`, `UI_OBEC` (`python main.py ku`) | funguje |
+| Záloha budov z RÚIAN VFR | funguje (obec 583413: 1 301 polygonů `OriginalniHranice`) |
+| WMS ortofoto, vrstva `0`, EPSG:3857 | GetMap HTTP 200 `image/jpeg` |
+| WMS katastrální mapy, `hranice_parcel,parcelni_cisla`, EPSG:3857 | GetMap HTTP 200 `image/png` |
+| Odkaz VDP `https://vdp.cuzk.gov.cz/vdp/ruian/parcely/{ID_2}` | HTTP 200, „Parcela - detail“ |
+| Kódy KÚ 698504 Moravany u Brna, 713392 Ostopovice | potvrzené číselníkem |
+
+**Neověřeno:**
 
 | Položka | Stav |
 |---|---|
-| URL SHP `https://services.cuzk.gov.cz/shp/ku/epsg-5514/{kod}.zip` (starý `services.cuzk.cz` přesměrovává 301) | převzato, ověřeno třetí stranou |
-| Vrstvy `PARCELY_KN_P` (`ID, ID_2, TYPPPD_KOD, KATUZE_KOD, OBEC_KOD`) a `PARCELY_KN_DEF` (`TEXT_KM, PAR_VYMERA, DRUPOZ_KOD, ZPVYPA_KOD, BUD_ID, STAV_PARC`), CP1250, spojení přes `ID` 1:1, `ID_2` = ID parcely ISKN/RÚIAN | převzato, ověřeno třetí stranou |
-| Prázdný `ZPVYPA_KOD` je v DBF `****` (→ NULL) | převzato |
-| Vrstva budov `BUDOVY_P` (polygony) | z popisu vrstev ČÚZK; atributy neověřené (nástroj používá jen geometrii) |
-| Číselníky `https://services.cuzk.gov.cz/sestavy/cis/{NAZEV}.zip` (CSV CP1250, `;`, sloupce `KOD;NAZEV`) | převzato |
-| Kódy druhů pozemku 2 orná, 5 zahrada, 10 lesní, 11 vodní, 13 zastavěná, 14 ostatní | převzato; ostatní kódy se berou z číselníku |
-| Kódy způsobu využití „silnice“ a „ostatní komunikace“ | **neověřené** – nástroj je hledá podle názvu v číselníku |
-| Odkaz Nahlížení `https://nahlizenidokn.cuzk.gov.cz/ZobrazObjekt.aspx?typ=parcela&id={ID_2}` | formát převzatý; třetí strana hlásí, že při opakovaných přístupech Nahlížení přesměrovává na stránku ochrany provozu. Proto je vedle i odkaz na VDP. |
-| Odkaz Nahlížení podle KÚ + čísla parcely | **neověřený formát → neimplementováno** |
-| Odkaz VDP RÚIAN `https://vdp.cuzk.gov.cz/vdp/ruian/parcely/{ID_2}` | převzato, ověřeno třetí stranou |
-| Odkaz Mapy `https://mapy.com/fnc/v1/showmap?mapset=aerial&center={lon},{lat}&zoom=18&marker=true` | dle dokumentace developer.mapy.com |
-| WMS ortofoto `https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer`, vrstva `0` | URL z geoportálu ČÚZK; název vrstvy `0` a podpora EPSG:3857 **neověřené** (případně uprav `mapa.ortofoto_vrstva`) |
-| WMS katastrální mapy `https://services.cuzk.gov.cz/wms/local-km-wms.asp`, vrstvy `hranice_parcel,parcelni_cisla` | z popisu služby, **neověřené** |
-| Jednotný standard ÚP: `PlochyRZV_p`, `Typ`, `CasH` (1/2), `Index` | z metodiky MMR (přes vyhledávání) |
-| Název plochy `BX` | **neověřený** – výchozí popisek je obecný, přepiš v `nazvy_ploch` |
-| Záloha budov z RÚIAN VFR (`vdp.cuzk.gov.cz/vymenny_format/soucasna/{YYYYMMDD}_OB_{obec}_UKSH.xml.zip`, vrstva `StavebniObjekty`, geometrie `OriginalniHranice`) | URL vzor převzatý; čtení geometrie **neověřené** |
-| Kódy KÚ v `config.example.yaml` (698504 Moravany u Brna, 713392 Ostopovice) | ze sekundárních zdrojů – ověř `python main.py ku …` |
-
-Ověřené vlastním během: celá logika na syntetickém KÚ (počty v každém kroku sedí s ručně
-spočtenými), čtení ZIP bez `.cpg` v CP1250, všechny tři způsoby spojení atributů, převod CRS ÚP,
-Excel (hyperlinky, autofilter, ukotvení), GeoPackage a vykreslení mapy v Chromiu. 34 testů.
+| Odkaz Nahlížení `https://nahlizenidokn.cuzk.gov.cz/ZobrazObjekt.aspx?typ=parcela&id={ID_2}` | formát převzatý z veřejného rozboru; nástroj ho záměrně nikdy nevolá. Stejné `ID_2` funguje ve VDP. Při opakovaném otevírání může Nahlížení ukázat stránku ochrany provozu – pak použij odkaz VDP. |
+| Odkaz Nahlížení podle KÚ + čísla parcely | formát nenalezen v ověřitelném zdroji → neimplementováno |
+| Odkaz Mapy `https://mapy.com/fnc/v1/showmap?…` | dle dokumentace developer.mapy.com, neotestováno |
+| Čtení skutečného souboru ÚP | zatím jen syntetický ÚP a náhradní ÚP (celé KÚ = BI); NGÚP (`uzemniplanovani.gov.cz`) odpovídá runnerům GitHubu 403 |
+| Název plochy `BX` | výchozí popisek je obecný, přepiš v `nazvy_ploch` |
 
 ## Známá omezení
 

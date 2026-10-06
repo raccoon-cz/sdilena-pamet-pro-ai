@@ -34,8 +34,11 @@ DEFAULTS: dict[str, Any] = {
     "min_podil_v_plose": 0.6,
     "max_vzdalenost_od_komunikace_m": 5,
     "max_prekryv_budovy_m2": 10,
-    # Do listu „Lesní a vyřazené“ jdou vyřazené parcely aspoň s tímto podílem v cílové ploše.
+    # Do listu „Lesní a vyřazené“ jdou vyřazené parcely aspoň s tímto podílem v cílové ploše
+    # a aspoň s touto výměrou (drobné zbytkové parcely jsou jen šum). Stávající domy
+    # (zastavěná plocha) a nevhodné parcely (komunikace, voda) se do listu nedávají.
     "vyrazene_min_podil": 0.1,
+    "vyrazene_min_vymera_m2": 300,
     "skore": {
         "idealni_vymera_m2": [800, 1500],
         "vahy": {"podil": 40, "pristup": 25, "vymera": 20, "druh": 15},
@@ -45,9 +48,13 @@ DEFAULTS: dict[str, Any] = {
         "zastavena": ["zastavěná plocha a nádvoří"],
         "lesni": ["lesní pozemek"],
         "bonus": ["zahrada", "orná půda"],
+        # parcely, na které se dům postavit nedá (vyřadí se); [] = vypnuto
+        "nevhodne": ["vodní plocha"],
     },
     # Názvy (nebo kódy) z číselníku SC_ZP_VYUZITI_POZ, které znamenají přístupovou komunikaci.
     "pristup_zpusoby_vyuziti": ["silnice", "ostatní komunikace"],
+    # Způsoby využití, které parcelu vyřadí – parcela sama je komunikace / dopravní plocha.
+    "nevhodne_zpusoby_vyuziti": ["silnice", "ostatní komunikace", "dálnice", "dráha", "ostatní dopravní plocha"],
     "cache_dir": "data/cache",
     "output_dir": "output",
     "zdroje": {
@@ -173,7 +180,9 @@ class Config:
             ("Druh pozemku – zastavěná", ", ".join(map(str, r["druhy_pozemku"]["zastavena"]))),
             ("Druh pozemku – lesní", ", ".join(map(str, r["druhy_pozemku"]["lesni"]))),
             ("Druh pozemku – bonus ve skóre", ", ".join(map(str, r["druhy_pozemku"]["bonus"]))),
+            ("Druh pozemku – nevhodný (vyřadit)", ", ".join(map(str, r["druhy_pozemku"]["nevhodne"])) or "–"),
             ("Způsoby využití = komunikace", ", ".join(map(str, r["pristup_zpusoby_vyuziti"]))),
+            ("Způsoby využití – nevhodné (vyřadit)", ", ".join(map(str, r["nevhodne_zpusoby_vyuziti"])) or "–"),
             ("Ideální výměra pro skóre (m²)", "–".join(map(str, r["skore"]["idealni_vymera_m2"]))),
             ("Váhy skóre", ", ".join(f"{k}={v}" for k, v in r["skore"]["vahy"].items())),
             ("Zdroj katastrální mapy", r["zdroje"]["shp_url"]),

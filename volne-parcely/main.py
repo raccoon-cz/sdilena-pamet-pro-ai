@@ -87,6 +87,7 @@ def inspect(
     vzorku: int = typer.Option(3, "--vzorku", help="Počet ukázkových hodnot na atribut"),
 ):
     """Vypíše vrstvy a atributy SHP balíčku KÚ nebo libovolného souboru (ÚP)."""
+    import pandas as pd
     import pyogrio
 
     from parcely.inspekce import describe_layer, format_layer, value_counts
@@ -123,8 +124,10 @@ def inspect(
             c = load_ciselnik(cfg, cis) if cis else None
             typer.echo(f"Četnosti {name}.{hodnoty}:")
             for val, n in counts.items():
-                popis = c.popis(val) if c is not None and str(val).strip().lstrip("-").isdigit() else ""
-                typer.echo(f"  {str(val):<12}{n:>8}  {popis}")
+                num = pd.to_numeric(pd.Series([val]), errors="coerce").iloc[0]
+                kod = int(num) if pd.notna(num) and float(num).is_integer() else None
+                popis = c.popis(kod) if c is not None and kod is not None else ""
+                typer.echo(f"  {str(kod if kod is not None else val):<12}{n:>8}  {popis}")
         return
 
     path = Path(cil)

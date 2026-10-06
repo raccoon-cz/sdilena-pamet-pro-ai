@@ -71,6 +71,8 @@ def vysledky(out_dir: str) -> None:
     print(k[cols].head(25).to_string())
     print("\nRozdělení druhů pozemku u kandidátů:")
     print(k["Druh pozemku"].value_counts().to_string())
+    print("\nZpůsob využití u kandidátů:")
+    print(k["Způsob využití"].fillna("(neuveden)").value_counts().to_string())
     print("\nPřístup:", k["Přístup ke komunikaci"].value_counts().to_dict())
     print("Budova evidovaná v KN:", k["Budova evidovaná v KN"].value_counts().to_dict())
     print("\nDůvody vyřazení (list Lesní a vyřazené):")

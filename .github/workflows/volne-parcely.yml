@@ -61,38 +61,26 @@ jobs:
         continue-on-error: true
         run: python ci/overeni.py vfr 698504
 
-      - name: WMS – capabilities a testovací GetMap v EPSG:3857
-        continue-on-error: true
-        run: |
-          set +e -x
-          curl -sS -m 90 "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?service=WMS&request=GetCapabilities" -o orto.xml
-          grep -oE '<Name>[^<]*</Name>' orto.xml | head -10
-          grep -oE '<(CRS|SRS)>[^<]*' orto.xml | sort -u | head -40
-          curl -sS -m 90 -o orto.jpg -w "ortofoto GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
-            "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?service=WMS&version=1.1.1&request=GetMap&layers=0&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/jpeg"
-          curl -sS -m 90 "https://services.cuzk.gov.cz/wms/local-km-wms.asp?service=WMS&request=GetCapabilities" -o km.xml
-          grep -oE '<Name>[^<]*</Name>' km.xml | head -40
-          grep -oE '<(CRS|SRS)>[^<]*' km.xml | sort -u | head -40
-          curl -sS -m 90 -o km.png -w "KM GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
-            "https://services.cuzk.gov.cz/wms/local-km-wms.asp?service=WMS&version=1.1.1&request=GetMap&layers=hranice_parcel,parcelni_cisla&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/png&transparent=true"
-
-      - name: Průzkum NGÚP (jak stáhnout data ÚP)
+      - name: WMS – testovací GetMap v EPSG:3857
         continue-on-error: true
         run: |
           set +e
-          mkdir -p ../ngup && cd ../ngup
-          curl -sSL -m 60 -A "Mozilla/5.0" -o dokumenty.html -w "dokumenty-obci: HTTP %{http_code} %{size_download} B\n" https://uzemniplanovani.gov.cz/dokumenty-obci
-          grep -oE '(src|href)="[^"]+"' dokumenty.html | grep -iE '\.js|/o/' | sort -u | head -60
-          grep -oE '/o/[A-Za-z0-9_./-]+' dokumenty.html | sort -u | head -60
-          for js in $(grep -oE 'src="[^"]+\.js[^"]*"' dokumenty.html | sed -E 's/^src="//; s/"$//' | sort -u | head -40); do
-            case "$js" in http*) u="$js";; /*) u="https://uzemniplanovani.gov.cz$js";; *) continue;; esac
-            curl -sSL -m 30 -A "Mozilla/5.0" "$u" -o b.js || continue
-            hits=$(grep -oE '"/o/rest[^"]{0,120}"|/o/rest/[A-Za-z0-9_./{}$-]{0,120}|rest/ais/[A-Za-z0-9_./{}$-]{0,120}' b.js | sort -u | head -40)
-            [ -n "$hits" ] && { echo "== $u"; echo "$hits"; }
-          done
-          for path in /o/rest/ais /o/rest/ais/documents /o/rest/ais/municipalities /o/rest/ais/contents /o/api/jsonws; do
-            curl -sS -m 30 -A "Mozilla/5.0" -o r.txt -w "$path: HTTP %{http_code} %{content_type} %{size_download} B\n" "https://uzemniplanovani.gov.cz$path"
-            head -c 600 r.txt; echo
+          curl -sS -m 90 -o orto.jpg -w "ortofoto GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
+            "https://ags.cuzk.gov.cz/arcgis1/services/ORTOFOTO/MapServer/WMSServer?service=WMS&version=1.1.1&request=GetMap&layers=0&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/jpeg"
+          curl -sS -m 90 -o km.png -w "KM GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
+            "https://services.cuzk.gov.cz/wms/local-km-wms.asp?service=WMS&version=1.1.1&request=GetMap&layers=hranice_parcel,parcelni_cisla&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/png&transparent=true"
+
+      - name: Průzkum veřejných ArcGIS služeb s ÚP (Brno, JMK)
+        continue-on-error: true
+        run: |
+          set +e
+          python ci/pruzkum_up.py
+          for u in https://gis.brno.cz/ags1/rest/services?f=pjson https://gis.brno.cz/arcgis/rest/services?f=pjson \
+                   https://gis.brno.cz/ags/rest/services?f=pjson https://mapy.jmk.cz/arcgis/rest/services?f=pjson \
+                   https://gis.kr-jihomoravsky.cz/arcgis/rest/services?f=pjson https://mapy.jmk.cz/ags/rest/services?f=pjson; do
+            echo "== $u"
+            curl -sSL -m 40 -A "Mozilla/5.0" -w "\n-- HTTP %{http_code} %{content_type} %{size_download} B\n" "$u" | head -c 3000
+            echo
           done
 
       - name: Náhradní ÚP (celé KÚ = BI) a celý běh

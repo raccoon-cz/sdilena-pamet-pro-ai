@@ -131,6 +131,7 @@ class FilterResult:
 
 STEP_LABELS = {
     "zastavena": "druh pozemku zastavěná plocha",
+    "nevhodna": "nevhodný druh / způsob využití",
     "budova": "budova v parcele",
     "vymera": "výměra mimo rozsah",
     "podil": "podíl v ploše ÚP pod limitem",
@@ -155,14 +156,22 @@ def apply_filters(
     max_vymera: float,
     min_podil: float,
     max_prekryv_budovy: float,
+    nevhodne_druhy: set[int] = frozenset(),
+    nevhodne_zpusoby: set[int] = frozenset(),
     vyrazene_min_podil: float = 0.1,
+    vyrazene_min_vymera: float = 0.0,
     budovy_dostupne: bool = True,
 ) -> FilterResult:
-    """Postupně aplikuje filtry v pořadí ze zadání a počítá, kolik parcel každý krok vyřadil."""
+    """Postupně aplikuje filtry a počítá, kolik parcel každý krok vyřadil.
+
+    Pořadí: zastavěná plocha → nevhodná (komunikace, voda) → budova → výměra → podíl v ÚP → lesní.
+    """
     druh = df["druh_kod"]
+    zpusob = df["zpusob_kod"] if "zpusob_kod" in df.columns else pd.Series(pd.NA, index=df.index, dtype="Int64")
     vym = effective_area(df)
     flags = {
         "zastavena": druh.isin(list(zastavena_kody)).fillna(False).astype(bool),
+        "nevhodna": (druh.isin(list(nevhodne_druhy)) | zpusob.isin(list(nevhodne_zpusoby))).fillna(False).astype(bool),
         "budova": (df["budova_prekryv_m2"] > max_prekryv_budovy) if budovy_dostupne else pd.Series(False, index=df.index),
         "vymera": (vym < min_vymera) | (vym > max_vymera),
         "podil": df["podil"] < min_podil,
@@ -185,7 +194,9 @@ def apply_filters(
     all_reasons = all_reasons.astype(str).str.removesuffix("; ")
     df = df.assign(vymera_filtr=vym, duvod=first, vsechny_duvody=all_reasons)
     lesni = df[first == STEP_LABELS["lesni"]]
-    vyrazene = df[(first != "") & (first != STEP_LABELS["lesni"]) & (df["podil"] >= vyrazene_min_podil)]
+    # K ručnímu posouzení jen „těsně vyřazené“: ne stávající domy, komunikace, voda a drobné zbytky.
+    bez_sumu = ~first.isin(["", STEP_LABELS["lesni"], STEP_LABELS["zastavena"], STEP_LABELS["nevhodna"]])
+    vyrazene = df[bez_sumu & (df["podil"] >= vyrazene_min_podil) & ~(vym < vyrazene_min_vymera)]
     return FilterResult(kandidati=df[remaining], lesni=lesni, vyrazene=vyrazene, kroky=kroky)
 
 

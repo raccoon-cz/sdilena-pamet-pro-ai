@@ -102,11 +102,12 @@ def test_pristup_mimo_dosah_hledani():
 ZAST, LES, ZAHRADA, ORNA = 13, 10, 5, 2
 
 
-def frame(rows):
+def frame(rows, zpusob=None):
     """rows: (druh, výměra, podíl, překryv budovy)"""
     return gpd.GeoDataFrame(
         {
             "druh_kod": pd.array([r[0] for r in rows], dtype="Int64"),
+            "zpusob_kod": pd.array(zpusob or [pd.NA] * len(rows), dtype="Int64"),
             "vymera": [r[1] for r in rows],
             "podil": [r[2] for r in rows],
             "budova_prekryv_m2": [r[3] for r in rows],
@@ -138,11 +139,29 @@ def test_filtry_v_poradi_a_pocty():
     res = apply_filters(df, **FILTER_KW)
     assert set(res.kandidati.index) == {0, 3, 5, 10}
     assert set(res.lesni.index) == {9}
-    assert set(res.vyrazene.index) == {1, 2, 4, 6, 7}
-    assert [k["vyrazeno"] for k in res.kroky] == [0, 1, 1, 2, 2, 1]
+    # stávající dům (1) do listu vyřazených nejde
+    assert set(res.vyrazene.index) == {2, 4, 6, 7}
+    assert [k["vyrazeno"] for k in res.kroky] == [0, 1, 0, 1, 2, 2, 1]
     assert res.kroky[-1]["zbyva"] == 4
-    assert res.vyrazene.loc[1, "duvod"] == "druh pozemku zastavěná plocha"
-    assert res.vyrazene.loc[1, "vsechny_duvody"] == "druh pozemku zastavěná plocha; budova v parcele"
+    assert res.vyrazene.loc[2, "duvod"] == "budova v parcele"
+    assert res.vyrazene.loc[4, "vsechny_duvody"] == "výměra mimo rozsah"
+
+
+def test_komunikace_a_voda_se_vyradi():
+    SILNICE, KOMUNIKACE, ZELEN, VODA = 16, 17, 19, 11
+    df = frame(
+        [(14, 1000, 1.0, 0), (14, 1000, 1.0, 0), (14, 1000, 1.0, 0), (VODA, 1000, 1.0, 0), (ZAHRADA, 1000, 1.0, 0)],
+        zpusob=[SILNICE, KOMUNIKACE, ZELEN, pd.NA, pd.NA],
+    )
+    res = apply_filters(df, **FILTER_KW, nevhodne_druhy={VODA}, nevhodne_zpusoby={SILNICE, KOMUNIKACE})
+    assert set(res.kandidati.index) == {2, 4}
+    assert res.kroky[2] == {"krok": "nevhodný druh / způsob využití", "vyrazeno": 3, "zbyva": 2}
+    assert res.vyrazene.empty  # komunikace a voda nejsou „těsně vyřazené“
+
+
+def test_drobne_zbytky_nejsou_v_listu_vyrazenych():
+    res = apply_filters(frame([(ORNA, 50, 1.0, 0), (ORNA, 450, 1.0, 0)]), **FILTER_KW, vyrazene_min_vymera=300)
+    assert set(res.vyrazene.index) == {1}
 
 
 def test_lesni_ktery_neprosel_jinym_filtrem_neni_v_lesnich():
@@ -154,7 +173,7 @@ def test_lesni_ktery_neprosel_jinym_filtrem_neni_v_lesnich():
 def test_filtr_budov_preskocen_kdyz_budovy_chybi():
     res = apply_filters(frame([(ZAHRADA, 1000, 1.0, 500)]), **FILTER_KW, budovy_dostupne=False)
     assert list(res.kandidati.index) == [0]
-    assert "přeskočeno" in res.kroky[2]["krok"]
+    assert "přeskočeno" in res.kroky[3]["krok"]
 
 
 def test_chybejici_vymera_nahradi_plocha_geometrie():

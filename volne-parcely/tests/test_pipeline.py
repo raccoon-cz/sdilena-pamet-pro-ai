@@ -36,6 +36,8 @@ def test_cely_beh(tmp_path):
     lv = res.lesni_vyrazene.set_index("id_parcely")
     assert {i for i, d in lv["duvod"].items() if d == "lesní pozemek"} == {str(td.parcel_id("N8"))}
     assert set(lv.index) == {str(td.parcel_id(p)) for p in td.EXPECTED_FOREST | td.EXPECTED_REJECTED}
+    kroky = [k["vyrazeno"] for k in res.results[0].filtr.kroky]
+    assert kroky == [0, 1, 2, 2, 4, 3, 1]  # vstup, zastavěná, komunikace, budova, výměra, podíl, lesní
 
     k = res.kandidati.set_index("id_parcely")
     n1 = k.loc[str(td.parcel_id("N1"))]

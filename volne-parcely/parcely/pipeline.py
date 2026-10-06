@@ -33,6 +33,8 @@ class Kody:
     lesni: set[int]
     bonus: set[int]
     pristup: set[int] | None  # None = komunikace nejdou určit
+    nevhodne_druhy: set[int]
+    nevhodne_zpusoby: set[int]
     druh: Ciselnik | None
     zpusob: Ciselnik | None
 
@@ -70,6 +72,8 @@ def load_codes(cfg: Config) -> Kody:
     lesni, _ = resolve_codes(d["lesni"], druh, "druhy_pozemku.lesni")
     bonus, _ = resolve_codes(d["bonus"], druh, "druhy_pozemku.bonus")
     pristup, _ = resolve_codes(cfg["pristup_zpusoby_vyuziti"], zpusob, "pristup_zpusoby_vyuziti")
+    nevhodne_druhy, _ = resolve_codes(d["nevhodne"], druh, "druhy_pozemku.nevhodne")
+    nevhodne_zpusoby, _ = resolve_codes(cfg["nevhodne_zpusoby_vyuziti"], zpusob, "nevhodne_zpusoby_vyuziti")
     if not zastavena:
         log.warning("Kód druhu „zastavěná plocha“ není známý – filtr zastavěných parcel nebude fungovat.")
     if not pristup:
@@ -78,10 +82,11 @@ def load_codes(cfg: Config) -> Kody:
             "Přístup bude „neznámo“. Kódy lze zadat číslem v pristup_zpusoby_vyuziti."
         )
     log.info(
-        "Kódy – zastavěná: %s, lesní: %s, bonus: %s, komunikace: %s",
+        "Kódy – zastavěná: %s, lesní: %s, bonus: %s, komunikace: %s, nevhodné druhy: %s, nevhodné způsoby: %s",
         sorted(zastavena), sorted(lesni), sorted(bonus), sorted(pristup) if pristup else "neznámé",
+        sorted(nevhodne_druhy), sorted(nevhodne_zpusoby),
     )
-    return Kody(zastavena, lesni, bonus, pristup or None, druh, zpusob)
+    return Kody(zastavena, lesni, bonus, pristup or None, nevhodne_druhy, nevhodne_zpusoby, druh, zpusob)
 
 
 def process_ku(cfg: Config, ku: KatastralniUzemi, up: gpd.GeoDataFrame, kody: Kody) -> KUResult:
@@ -130,7 +135,10 @@ def process_ku(cfg: Config, ku: KatastralniUzemi, up: gpd.GeoDataFrame, kody: Ko
         max_vymera=float(cfg["max_vymera_m2"]),
         min_podil=float(cfg["min_podil_v_plose"]),
         max_prekryv_budovy=float(cfg["max_prekryv_budovy_m2"]),
+        nevhodne_druhy=kody.nevhodne_druhy,
+        nevhodne_zpusoby=kody.nevhodne_zpusoby,
         vyrazene_min_podil=float(cfg["vyrazene_min_podil"]),
+        vyrazene_min_vymera=float(cfg["vyrazene_min_vymera_m2"]),
         budovy_dostupne=buildings is not None,
     )
     res.stav = "OK"
@@ -209,10 +217,12 @@ def summary_tables(results: list[KUResult]) -> tuple[pd.DataFrame, pd.DataFrame]
 
 def format_summary(run: RunResult) -> str:
     lines = [f"Souhrn běhu → {run.out_dir}", ""]
-    header = f"{'KÚ':<32}{'vstup':>8}{'zastav.':>9}{'budova':>8}{'výměra':>8}{'podíl':>8}{'lesní':>7}{'kandid.':>9}"
+    widths = (8, 9, 9, 8, 8, 8, 7, 9)
+    header = (f"{'KÚ':<32}{'vstup':>8}{'zastav.':>9}{'nevhod.':>9}{'budova':>8}{'výměra':>8}{'podíl':>8}"
+              f"{'lesní':>7}{'kandid.':>9}")
     lines.append(header)
     lines.append("-" * len(header))
-    tot = [0] * 7
+    tot = [0] * len(widths)
     for r in run.results:
         name = f"{r.ku.kod} {r.ku.nazev}"[:31]
         if r.filtr is None:
@@ -221,9 +231,9 @@ def format_summary(run: RunResult) -> str:
         k = r.filtr.kroky
         vals = [k[0]["zbyva"]] + [s["vyrazeno"] for s in k[1:]] + [k[-1]["zbyva"]]
         tot = [a + b for a, b in zip(tot, vals)]
-        lines.append(f"{name:<32}" + "".join(f"{v:>{w}}" for v, w in zip(vals, (8, 9, 8, 8, 8, 7, 9))))
+        lines.append(f"{name:<32}" + "".join(f"{v:>{w}}" for v, w in zip(vals, widths)))
     lines.append("-" * len(header))
-    lines.append(f"{'CELKEM':<32}" + "".join(f"{v:>{w}}" for v, w in zip(tot, (8, 9, 8, 8, 8, 7, 9))))
+    lines.append(f"{'CELKEM':<32}" + "".join(f"{v:>{w}}" for v, w in zip(tot, widths)))
     ok = sum(r.stav == "OK" for r in run.results)
     lines.append("")
     lines.append(f"KÚ zpracováno: {ok}/{len(run.results)}, kandidátů: {len(run.kandidati)}, "

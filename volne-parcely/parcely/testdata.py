@@ -1,7 +1,9 @@
 """SYNTETICKÁ testovací data: jedno vymyšlené KÚ + ÚP + číselníky.
 
-Struktura balíčku napodobuje SHP katastrální mapy ČÚZK podle publikovaného popisu
-(vrstvy PARCELY_KN_P / PARCELY_KN_DEF / BUDOVY_P, kódování CP1250 bez .cpg).
+Struktura balíčku napodobuje skutečný SHP balíček ČÚZK (ověřeno na KÚ 698504 v 10/2026):
+vrstvy PARCELY_KN_P / PARCELY_KN_DEF / BUDOVY_P / KATASTRALNI_UZEMI_P, UTF-8 s .cpg,
+ID a ID_2 jako text, ID_2 i v PARCELY_KN_DEF. Varianta real_like=False dělá starší podobu
+(CP1250 bez .cpg, číselná ID) pro test robustnosti loaderu.
 Geometrie, čísla parcel, ID i kódy způsobu využití jsou vymyšlené – data neodpovídají
 žádnému skutečnému území a slouží jen k ověření logiky nástroje bez přístupu k síti.
 """
@@ -87,7 +89,8 @@ UP_AREAS = [
 # Očekávané výsledky (použité v testech)
 EXPECTED_CANDIDATES = {"N1", "N2", "N3", "N4", "N6", "N9", "M1", "M4", "S3", "S4", "S5", "T1"}
 EXPECTED_FOREST = {"N8"}
-EXPECTED_REJECTED = {"S1", "S2", "N5", "N7", "M2", "M3"}
+# list „Lesní a vyřazené“: bez stávajících domů (S1) a komunikací (R1, R2)
+EXPECTED_REJECTED = {"S2", "N5", "N7", "M2", "M3"}
 
 
 def parcel_id(label: str) -> int:
@@ -100,14 +103,15 @@ def _shp_files(gdf: gpd.GeoDataFrame, folder: Path, name: str, encoding: str | N
         (folder / f"{name}.cpg").unlink(missing_ok=True)
 
 
-def build_kn_zip(dest: Path, def_has_id2: bool = False, def_has_id: bool = True) -> Path:
+def build_kn_zip(dest: Path, def_has_id2: bool = True, def_has_id: bool = True, real_like: bool = True) -> Path:
     """Vytvoří ZIP ve stylu ČÚZK: {kod}/PARCELY_KN_P.shp, PARCELY_KN_DEF.shp, BUDOVY_P.shp …"""
     rows = list(enumerate(PARCELS, start=1))
+    ident = (lambda v: str(v)) if real_like else (lambda v: v)
     poly = gpd.GeoDataFrame(
         {
-            "ID": [i for i, _ in rows],
-            "ID_2": [parcel_id(p[0]) for _, p in rows],
-            "TYPPPD_KOD": [1] * len(rows),
+            "ID": [ident(i) for i, _ in rows],
+            "ID_2": [ident(parcel_id(p[0])) for _, p in rows],
+            "TYPPPD_KOD": [ident(9100301) for _ in rows],
             "KATUZE_KOD": [TEST_KU] * len(rows),
             "OBEC_KOD": [TEST_OBEC_KOD] * len(rows),
         },
@@ -120,29 +124,31 @@ def build_kn_zip(dest: Path, def_has_id2: bool = False, def_has_id: bool = True)
         "PAR_VYMERA": [round(make_valid(p[2]).area) for _, p in rows],
         "DRUPOZ_KOD": [p[3] for _, p in rows],
         "ZPVYPA_KOD": [p[4] if p[4] is not None else float("nan") for _, p in rows],
-        "BUD_ID": [p[5] if p[5] is not None else float("nan") for _, p in rows],
+        "BUD_ID": [(str(p[5]) if real_like else p[5]) if p[5] is not None else None for _, p in rows],
+        "STAV_PARC": ["a" if p[5] else "n" for _, p in rows],
     }
-    if def_has_id:
-        attrs = {"ID": [i for i, _ in rows], **attrs}
     if def_has_id2:
-        attrs = {"ID_2": [parcel_id(p[0]) for _, p in rows], **attrs}
+        attrs = {"ID_2": [ident(parcel_id(p[0])) for _, p in rows], **attrs}
+    if def_has_id:
+        attrs = {"ID": [ident(i) for i, _ in rows], **attrs}
     # definiční body v obráceném pořadí, ať spojení nefunguje „náhodou“ podle pořadí řádků
     pts = gpd.GeoDataFrame(attrs, geometry=[make_valid(p[2]).representative_point() for _, p in rows], crs=5514)
     pts = pts.iloc[::-1].reset_index(drop=True)
-    budovy = gpd.GeoDataFrame({"ID": range(1, len(BUILDINGS) + 1)}, geometry=BUILDINGS, crs=5514)
+    budovy = gpd.GeoDataFrame({"ID": [ident(i) for i in range(1, len(BUILDINGS) + 1)]}, geometry=BUILDINGS, crs=5514)
     ku = gpd.GeoDataFrame(
         {"KATUZE_KOD": [TEST_KU], "NAZEV": ["Testov – SYNTETICKÉ území"]}, geometry=[_b(0, 0, 310, 300)], crs=5514
     )
 
+    encoding = "utf-8" if real_like else "cp1250"
     dest.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as tmp:
         folder = Path(tmp) / str(TEST_KU)
         folder.mkdir()
-        _shp_files(poly, folder, "PARCELY_KN_P", "cp1250", False)
-        _shp_files(pts, folder, "PARCELY_KN_DEF", "cp1250", False)
-        _shp_files(budovy, folder, "BUDOVY_P", "cp1250", False)
-        _shp_files(ku, folder, "KATASTRALNI_UZEMI_P", "cp1250", False)
+        for gdf, name in ((poly, "PARCELY_KN_P"), (pts, "PARCELY_KN_DEF"), (budovy, "BUDOVY_P"),
+                          (ku, "KATASTRALNI_UZEMI_P")):
+            _shp_files(gdf, folder, name, encoding, keep_cpg=real_like)
         with zipfile.ZipFile(dest, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(f"{TEST_KU}/", "")  # skutečné ZIPy ČÚZK obsahují i položku adresáře
             for f in sorted(folder.iterdir()):
                 zf.write(f, f"{TEST_KU}/{f.name}")
     return dest
@@ -173,8 +179,8 @@ def _csv_zip(dest: Path, name: str, df: pd.DataFrame) -> Path:
 
 def build_ciselniky(cis_dir: Path) -> list[Path]:
     druh = pd.DataFrame({
-        "KOD": [ORNA, ZAHRADA, LES, ZASTAVENA, OSTATNI],
-        "NAZEV": ["orná půda", "zahrada", "lesní pozemek", "zastavěná plocha a nádvoří", "ostatní plocha"],
+        "KOD": [ORNA, ZAHRADA, LES, 11, ZASTAVENA, OSTATNI],
+        "NAZEV": ["orná půda", "zahrada", "lesní pozemek", "vodní plocha", "zastavěná plocha a nádvoří", "ostatní plocha"],
     })
     zpusob = pd.DataFrame({
         "KOD": [ZP_SILNICE, ZP_KOMUNIKACE, ZP_ZELEN],

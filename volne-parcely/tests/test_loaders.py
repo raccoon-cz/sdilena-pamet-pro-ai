@@ -11,9 +11,14 @@ from parcely.uzemni_plan import UPError, load_up
 KN = DEFAULTS["kn"]
 
 
-@pytest.mark.parametrize("variant", [{}, {"def_has_id2": True}, {"def_has_id": False}])
+@pytest.mark.parametrize("variant", [
+    {},                                          # jako skutečný balíček: UTF-8, textová ID, ID_2 v obou vrstvách
+    {"def_has_id2": False},                      # spojení přes ID
+    {"def_has_id2": False, "def_has_id": False}, # prostorová záloha
+    {"real_like": False},                        # CP1250 bez .cpg, číselná ID
+])
 def test_load_parcels_spojeni_atributu(tmp_path, variant):
-    """Spojení přes ID, přes ID_2 i prostorová záloha dají stejný výsledek."""
+    """Všechny způsoby spojení a obě podoby balíčku dají stejný výsledek."""
     z = td.build_kn_zip(tmp_path / "ku.zip", **variant)
     parcels, notes = load_parcels(KNPackage(z), KN, "test")
     assert len(parcels) == len(td.PARCELS)
@@ -34,6 +39,7 @@ def test_load_parcels_spojeni_atributu(tmp_path, variant):
     assert any("nevalidních" in n for n in notes)
     if not variant.get("def_has_id", True):
         assert any("prostorově" in n for n in notes)
+    assert set(by_id.index) == {str(td.parcel_id(p[0])) for p in td.PARCELS}
 
 
 def test_chybejici_atribut_hlasi_dostupne(tmp_path):
@@ -59,8 +65,15 @@ def test_budovy_z_balicku(tmp_path):
     assert load_buildings_from_package(pkg, "NENI") is None
 
 
-def test_balicek_bez_cpg_cte_cp1250(tmp_path):
+def test_balicek_s_cpg_utf8(tmp_path):
     z = td.build_kn_zip(tmp_path / "ku.zip")
+    pkg = KNPackage(z)
+    assert pkg.encoding("PARCELY_KN_P") is None  # rozhoduje .cpg v balíčku
+    assert pkg.read("KATASTRALNI_UZEMI_P")["NAZEV"].iloc[0] == "Testov – SYNTETICKÉ území"
+
+
+def test_balicek_bez_cpg_cte_cp1250(tmp_path):
+    z = td.build_kn_zip(tmp_path / "ku.zip", real_like=False)
     with zipfile.ZipFile(z) as zf:
         assert not any(n.lower().endswith(".cpg") for n in zf.namelist())
     pkg = KNPackage(z)
