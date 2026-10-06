@@ -56,10 +56,10 @@ def load_vfr_buildings(cfg, kod_obce: int, today: dt.date | None = None) -> gpd.
     path = f"/vsizip/{Path(dest).resolve().as_posix()}/{xml[0]}"
     try:
         # Vrstva má více geometrických sloupců; obrys budovy je v OriginalniHranice.
-        gdf = pyogrio.read_dataframe(path, sql="SELECT OriginalniHranice FROM StavebniObjekty")
+        gdf = pyogrio.read_dataframe(path, sql="SELECT OriginalniHranice FROM StavebniObjekty", on_invalid="fix")
     except Exception as exc:  # noqa: BLE001 – GDAL hlásí různé třídy chyb
         log.info("VFR: výběr geometrie OriginalniHranice selhal (%s), čtu výchozí geometrii", exc)
-        gdf = pyogrio.read_dataframe(path, layer="StavebniObjekty")
+        gdf = pyogrio.read_dataframe(path, layer="StavebniObjekty", on_invalid="fix")
     gdf = gdf[gdf.geometry.notna() & gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
     if gdf.empty:
         raise SchemaError("VFR: vrstva StavebniObjekty neobsahuje polygony budov.")
@@ -88,7 +88,7 @@ def load_buildings(cfg, pkg: KNPackage, parcels: gpd.GeoDataFrame, label: str) -
         path = cfg.resolve(b_cfg["soubor"])
         if not path.exists():
             raise FileNotFoundError(f"Soubor s budovami {path} neexistuje (budovy.soubor).")
-        gdf = pyogrio.read_dataframe(path, layer=b_cfg.get("vrstva"))
+        gdf = pyogrio.read_dataframe(path, layer=b_cfg.get("vrstva"), on_invalid="fix")
         gdf = ensure_5514(gdf, f"budovy {path.name}")
         gdf = gdf[gdf.geometry.geom_type.isin(["Polygon", "MultiPolygon"])]
         gdf, _ = fix_geometries(gdf, "budovy")

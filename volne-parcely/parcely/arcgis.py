@@ -144,7 +144,7 @@ def fetch_layer(layer_url: str, where: str = "1=1", out_sr: int = 5514) -> gpd.G
                 continue
             path = Path(tmp) / f"page_{i}.json"
             path.write_text(json.dumps(data), encoding="utf-8")
-            frames.append(pyogrio.read_dataframe(path))
+            frames.append(pyogrio.read_dataframe(path, on_invalid="fix"))
     if not frames:
         raise ArcGISError(f"{layer_url}: dotaz „{where}“ nevrátil žádné prvky.")
     gdf = gpd.GeoDataFrame(pd.concat(frames, ignore_index=True), geometry=frames[0].geometry.name, crs=frames[0].crs)

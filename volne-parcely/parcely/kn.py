@@ -7,6 +7,7 @@ nesouladu vypíše, co v datech skutečně je.
 from __future__ import annotations
 
 import logging
+import warnings
 import zipfile
 from pathlib import Path
 
@@ -53,9 +54,16 @@ class KNPackage:
         return [str(f) for f in info["fields"]]
 
     def read(self, layer: str, columns: list[str] | None = None, read_geometry: bool = True):
-        return pyogrio.read_dataframe(
-            self.path(layer), columns=columns, read_geometry=read_geometry, encoding=self.encoding(layer)
-        )
+        # on_invalid="fix": SHP ČÚZK obsahují i neuzavřené prstence (GDAL je jen ohlásí varováním)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            gdf = pyogrio.read_dataframe(
+                self.path(layer), columns=columns, read_geometry=read_geometry, encoding=self.encoding(layer),
+                on_invalid="fix",
+            )
+        for msg in {str(w.message).split(".")[0] for w in caught}:
+            log.info("%s %s: %s (geometrie opravena)", self.zip_path.name, layer, msg)
+        return gdf
 
     def require(self, layer: str, config_key: str) -> None:
         if not self.has(layer):

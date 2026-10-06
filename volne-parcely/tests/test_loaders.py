@@ -132,3 +132,29 @@ def test_up_stary_typ_auto_detekce(tmp_path):
     assert set(gdf["up_kod"]) == {"B", "Z", "D", "P"}
     assert gdf.loc[gdf["up_kod"] == "B", "up_nazev"].iloc[0] in ("Plochy smíšené obytné", "Plocha smíšená obytná")
     assert "FAZE_2=" in gdf["up_detail"].iloc[0]
+
+
+def test_neuzavreny_prstenec_v_shp(tmp_path):
+    """Reálná chyba z KÚ Kuřim: SHP s neuzavřeným prstencem (GEOS ho jinak odmítne)."""
+    import struct
+
+    import numpy as np
+    import pyogrio.raw
+
+    def poly_wkb(coords):
+        b = struct.pack("<BI", 1, 3) + struct.pack("<I", 1) + struct.pack("<I", len(coords))
+        return b + b"".join(struct.pack("<dd", x, y) for x, y in coords)
+
+    folder = tmp_path / "123456"
+    folder.mkdir()
+    pyogrio.raw.write(str(folder / "PARCELY_KN_P.shp"),
+                      geometry=np.array([poly_wkb([(0, 0), (40, 0), (40, 25), (0, 25)])], dtype=object),
+                      field_data=[np.array(["1"]), np.array(["5"])], fields=["ID", "ID_2"],
+                      geometry_type="Polygon", crs="EPSG:5514", driver="ESRI Shapefile")
+    z = tmp_path / "ku.zip"
+    with zipfile.ZipFile(z, "w") as zf:
+        for f in folder.iterdir():
+            zf.write(f, f"123456/{f.name}")
+    gdf = KNPackage(z).read("PARCELY_KN_P")
+    assert gdf.geometry.iloc[0].is_valid
+    assert gdf.geometry.iloc[0].area == pytest.approx(1000)

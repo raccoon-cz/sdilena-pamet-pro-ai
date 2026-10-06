@@ -180,7 +180,7 @@ def load_up(up: UzemniPlan, nazvy_ploch: dict[str, str] | None = None, cache_dir
     label = f"ÚP {up.obec}"
     path, layer = resolve_source(up, cache_dir)
     try:
-        gdf = pyogrio.read_dataframe(path, layer=layer, encoding=up.kodovani)
+        gdf = pyogrio.read_dataframe(path, layer=layer, encoding=up.kodovani, on_invalid="fix")
     except Exception as exc:  # GDAL chyby nemají jednotnou třídu
         raise UPError(f"{label}: soubor {path} nejde přečíst: {exc}") from exc
     if gdf.empty:
