@@ -104,3 +104,11 @@ def test_rozpoznani_url():
     assert arcgis.is_service_url(SERVICE)
     assert arcgis.is_service_url(SERVICE + "/3")
     assert not arcgis.is_service_url("data/up/x.shp")
+
+
+def test_vyber_vrstvy_rzv_podle_nazvu(monkeypatch):
+    layers = {"layers": [{"id": 2, "name": "Hranice řešeného území", "geometryType": "esriGeometryPolygon"},
+                         {"id": 6, "name": "Zastavěné území ", "geometryType": "esriGeometryPolygon"},
+                         {"id": 8, "name": "Plochy s rozdílným způsobem využití", "geometryType": "esriGeometryPolygon"}]}
+    monkeypatch.setattr(arcgis.requests, "get", lambda *a, **k: FakeResponse(layers))
+    assert arcgis.resolve_layer_url(SERVICE) == f"{SERVICE}/8"

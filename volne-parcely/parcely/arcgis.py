@@ -70,6 +70,13 @@ def list_layers(service_url: str) -> list[dict]:
             for lyr in data.get("layers", [])]
 
 
+def _is_rzv_name(name: str) -> bool:
+    from .ciselniky import normalize
+
+    n = normalize(name).replace("_", " ")
+    return "rozdiln" in n or "plochyrzv" in n.replace(" ", "") or n.split()[-1:] == ["rzv"]
+
+
 def resolve_layer_url(url: str, vrstva: str | int | None = None) -> str:
     """URL konkrétní vrstvy. U URL služby bez čísla vrstvy vybere podle `vrstva` (id nebo název)
     nebo jedinou polygonovou vrstvu."""
@@ -87,6 +94,11 @@ def resolve_layer_url(url: str, vrstva: str | int | None = None) -> str:
     polygons = [lyr for lyr in layers if lyr.get("geometryType") == "esriGeometryPolygon"]
     if len(polygons) == 1:
         return f"{base}/{polygons[0]['id']}"
+    # vrstva ploch s rozdílným způsobem využití (jednotný standard: PlochyRZV)
+    rzv = [lyr for lyr in polygons if _is_rzv_name(str(lyr.get("name") or ""))]
+    if len(rzv) == 1:
+        log.info("Služba %s: vybrána vrstva %s: %s", base, rzv[0]["id"], rzv[0]["name"])
+        return f"{base}/{rzv[0]['id']}"
     raise ArcGISError(f"Služba {base} má více vrstev – nastav 'vrstva' (id nebo název). Vrstvy: {popis}")
 
 

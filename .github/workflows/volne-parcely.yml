@@ -70,18 +70,9 @@ jobs:
           curl -sS -m 90 -o km.png -w "KM GetMap: HTTP %{http_code}, %{content_type}, %{size_download} B\n" \
             "https://services.cuzk.gov.cz/wms/local-km-wms.asp?service=WMS&version=1.1.1&request=GetMap&layers=hranice_parcel,parcelni_cisla&styles=&srs=EPSG:3857&bbox=1840000,6302000,1840500,6302500&width=256&height=256&format=image/png&transparent=true"
 
-      - name: Průzkum veřejných ArcGIS služeb s ÚP (Brno, JMK)
+      - name: Průzkum veřejných ArcGIS služeb s ÚP (JMK, Brno, Kuřim)
         continue-on-error: true
-        run: |
-          set +e
-          python ci/pruzkum_up.py
-          for u in https://gis.brno.cz/ags1/rest/services?f=pjson https://gis.brno.cz/arcgis/rest/services?f=pjson \
-                   https://gis.brno.cz/ags/rest/services?f=pjson https://mapy.jmk.cz/arcgis/rest/services?f=pjson \
-                   https://gis.kr-jihomoravsky.cz/arcgis/rest/services?f=pjson https://mapy.jmk.cz/ags/rest/services?f=pjson; do
-            echo "== $u"
-            curl -sSL -m 40 -A "Mozilla/5.0" -w "\n-- HTTP %{http_code} %{content_type} %{size_download} B\n" "$u" | head -c 3000
-            echo
-          done
+        run: python ci/pruzkum_up.py
 
       - name: Reálný ÚP ze služby MÚ Kuřim – inspect
         continue-on-error: true

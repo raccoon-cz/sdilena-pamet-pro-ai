@@ -1,48 +1,50 @@
-"""CI průzkum: kde jsou veřejně dotazovatelná vektorová data ÚP (ArcGIS Online, Hub JMK)."""
+"""CI průzkum: struktura veřejných ArcGIS služeb s územními plány (vrstvy, atributy, počty)."""
 from __future__ import annotations
 
 import json
 import urllib.parse
 import urllib.request
 
+SLUZBY = [
+    "https://services5.arcgis.com/uc4BIJvwXwgPHm8D/arcgis/rest/services/Mapa_UP_WFL1/FeatureServer",
+    "https://services5.arcgis.com/uc4BIJvwXwgPHm8D/arcgis/rest/services/Map_UP1_WFL1/FeatureServer",
+    "https://gis.brno.cz/ags1/rest/services/Hosted/KAM_up_navrh_wgs/MapServer",
+    "https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_kurim/FeatureServer",
+    "https://services6.arcgis.com/nSl4NxcJbmr0IlpX/arcgis/rest/services/UP_cebin/FeatureServer",
+]
 
-def get(url: str):
+
+def get(url: str, **params):
+    if params:
+        url += "?" + urllib.parse.urlencode(params)
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    with urllib.request.urlopen(req, timeout=40) as r:
+    with urllib.request.urlopen(req, timeout=60) as r:
         return json.load(r)
 
 
-QUERIES = ["owner:mukuoi", "plochy s rozdílným způsobem využití", "UP_ AND (Brno OR jihomoravský OR JMK)"]
-
-for q in QUERIES:
-    url = "https://www.arcgis.com/sharing/rest/search?" + urllib.parse.urlencode(
-        {"q": f'({q}) AND (type:"Feature Service" OR type:"Map Service")', "num": 40, "f": "json"})
+for svc in SLUZBY:
+    print(f"== {svc}")
     try:
-        d = get(url)
+        d = get(svc, f="json")
     except Exception as exc:  # noqa: BLE001
-        print("AGOL", q, "ERR", exc)
+        print("   ERR", exc)
         continue
-    print(f"== AGOL '{q}': {d.get('total')} výsledků")
-    for it in d.get("results", []):
-        print(" -", it.get("title"), "|", it.get("type"), "|", it.get("owner"), "|", it.get("url"), "|", it.get("access"))
-
-for folder in ("PUBLIC", "OD", "KAM", "Hosted"):
-    try:
-        d = get(f"https://gis.brno.cz/ags1/rest/services/{folder}?f=json")
-        names = [f"{s['name']} ({s['type']})" for s in d.get("services", [])]
-        print(f"== gis.brno.cz/ags1 {folder}: {len(names)} služeb")
-        for n in names:
-            if any(k in n.lower() for k in ("up", "uzem", "územ", "plan", "plán", "rzv", "funk")):
-                print(" -", n)
-    except Exception as exc:  # noqa: BLE001
-        print("Brno", folder, "ERR", exc)
-
-try:
-    d = get("https://geodata-jmkgis.opendata.arcgis.com/api/search/v1/collections/all/items?"
-            + urllib.parse.urlencode({"q": "územní plán", "limit": 50}))
-    print("== JMK hub:", d.get("numberMatched"))
-    for f in d.get("features", []):
-        p = f.get("properties", {})
-        print(" -", p.get("title"), "|", p.get("type"), "|", p.get("url"))
-except Exception as exc:  # noqa: BLE001
-    print("JMK hub ERR", exc)
+    print("   popis:", (d.get("serviceDescription") or d.get("description") or "")[:200].replace("\n", " "))
+    for lyr in d.get("layers", []):
+        line = f"   vrstva {lyr.get('id')}: {lyr.get('name')} ({lyr.get('geometryType')})"
+        if lyr.get("geometryType") != "esriGeometryPolygon" or lyr.get("subLayerIds"):
+            print(line)
+            continue
+        try:
+            info = get(f"{svc}/{lyr['id']}", f="json")
+            cnt = get(f"{svc}/{lyr['id']}/query", where="1=1", returnCountOnly="true", f="json").get("count")
+            fields = [f["name"] for f in info.get("fields", [])]
+            print(f"{line} – {cnt} prvků, SR {info.get('extent', {}).get('spatialReference')}, pole: {', '.join(fields)}")
+            cand = [f for f in fields if any(k in f.lower() for k in ("typ", "kod", "funk", "zkr", "ozn", "plocha", "rzv", "nazev"))]
+            for f in cand[:4]:
+                st = get(f"{svc}/{lyr['id']}/query", where="1=1", outFields=f, returnDistinctValues="true",
+                         returnGeometry="false", f="json")
+                vals = sorted({str(x["attributes"].get(f)) for x in st.get("features", [])})
+                print(f"      {f}: {len(vals)} hodnot: {', '.join(vals[:40])}")
+        except Exception as exc:  # noqa: BLE001
+            print(f"{line} – ERR {exc}")
